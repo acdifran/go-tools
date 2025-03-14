@@ -1,0 +1,99 @@
+{{- define "tx_helpers" -}}
+package ent
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+)
+
+// Unwrappable defines a type that can unwrap itself.
+type Unwrappable[T any] interface {
+	Unwrap() T
+}
+
+// DummyUnwrap is a no-op implementation of Unwrappable.
+type DummyUnwrap struct{}
+
+func (d *DummyUnwrap) Unwrap() *DummyUnwrap {
+	return d
+}
+
+// ExecWithTx executes a function within a transaction context.
+func ExecWithTx(
+	ctx context.Context,
+	client *Client,
+	fn func(tx *Tx) error,
+) error {
+	_, err := WithTx(ctx, client, func(tx *Tx) (*DummyUnwrap, error) {
+		err := fn(tx)
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// WithTx wraps a function execution in a database transaction.
+func WithTx[T Unwrappable[T]](
+	ctx context.Context,
+	client *Client,
+	fn func(tx *Tx) (T, error),
+) (T, error) {
+	var tx *Tx
+	var err error
+
+	// Check if already in a transaction.
+	if _, ok := client.driver.(*txDriver); ok {
+		tx = &Tx{config: client.config}
+		tx.init()
+	}
+
+	if tx != nil {
+		return fn(tx)
+	}
+
+	// Start a new transaction.
+	tx, err = client.Tx(ctx)
+	if err != nil {
+		return *new(T), err
+	}
+
+	// Handle rollback on panic.
+	defer func() {
+		if v := recover(); v != nil {
+			rbErr := tx.Rollback()
+			err := fmt.Errorf("error rolling back transaction: %v", rbErr)
+			slog.ErrorContext(ctx, err.Error())
+			panic(v)
+		}
+	}()
+
+	ent, err := fn(tx)
+	if err != nil {
+		if rerr := tx.Rollback(); rerr != nil {
+			err = fmt.Errorf("%w: rolling back transaction: %v", err, rerr)
+		}
+		return *new(T), err
+	}
+
+	// Commit the transaction.
+	if err := tx.Commit(); err != nil {
+		return *new(T), fmt.Errorf("committing transaction: %w", err)
+	}
+
+	return ent.Unwrap(), nil
+}
+
+// Rollback ensures a transaction is rolled back safely.
+func Rollback(tx *Tx, err error) error {
+	if rerr := tx.Rollback(); rerr != nil {
+		err = fmt.Errorf("%w: %v", err, rerr)
+	}
+	return err
+}
+{{- end }}

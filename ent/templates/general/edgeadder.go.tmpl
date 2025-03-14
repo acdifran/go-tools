@@ -1,0 +1,29 @@
+{{ define "edgeadder" }}
+{{ $pkg := base $.Config.Package }}
+
+{{ template "header" $ }}
+
+{{- range $node := $.Nodes }}
+{{- with $node.Edges -}}
+
+{{- range $i, $e := . }}
+	// {{- if $e.Unique}}Sets the{{ else }}Adds one or more new edges to the{{- end }} {{ $e.StructField }} edge on the given {{ $node.Name }}.
+	//
+	// WARNING: This sets the edge directly on the given struct, which may mean it is not
+	// in sync with the database. This functionality is to allow "eager loading" like behavior
+	// from actions that create multiple ents and should be used carefully.
+	{{- if $e.Unique }}
+	func (e *{{ $node.Name }}) set{{ $e.StructField }}(edge *{{ $e.Type.Name }}) {
+			e.Edges.{{ $e.StructField }} = edge
+	}
+	{{- else }}
+	func (e *{{ $node.Name }}) add{{ $e.StructField }}(edges ...*{{ $e.Type.Name }}) {
+			e.Edges.{{ $e.StructField }} = append(e.Edges.{{ $e.StructField }}, edges...)
+			e.Edges.loadedTypes[{{ $i }}] = true
+	}
+	{{- end }}
+
+{{ end }}
+{{- end }}
+{{- end }}
+{{ end }}

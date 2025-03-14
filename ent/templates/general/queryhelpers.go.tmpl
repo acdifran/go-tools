@@ -1,0 +1,21 @@
+{{ define "queryhelpers" }}
+{{ $pkg := base $.Config.Package }}
+
+{{ template "header" $ }}
+
+{{- range $node := $.Nodes }}
+
+	// FirstOrNil returns the first entity from the query or nil if there aren't any
+	func ({{ $node.Receiver }} *{{ $node.QueryName }}) FirstOrNil(ctx context.Context) (*{{ $node.Name }}, error) {
+		nodes, err := {{ $node.Receiver }}.Limit(1).All(setContextOp(ctx, {{ $node.Receiver }}.ctx, ent.OpQueryFirst))
+		if err != nil {
+			return nil, err
+		}
+		if len(nodes) == 0 {
+			return nil, nil
+		}
+		return nodes[0], nil
+	}
+
+{{- end }}
+{{ end }}

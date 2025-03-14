@@ -1,0 +1,220 @@
+{{ define "action" }}
+{{ $pkg := base $.Config.Package }}
+
+{{ template "header" $ }}
+
+type actionCtxKey struct{}
+
+func NewActionsContext(parent context.Context, actions []string) context.Context {
+	return context.WithValue(parent, actionCtxKey{}, actions)
+}
+
+func ActionsFromContext(ctx context.Context) []string {
+	v, _ := ctx.Value(actionCtxKey{}).([]string)
+	return v
+}
+
+type Execer interface {
+	Exec(ctx context.Context) error
+	setConfig(config config)
+}
+
+type DeleteExecer interface {
+	Exec(ctx context.Context) (int, error)
+	setConfig(config config)
+}
+
+type DeleteBuilder struct {
+	DeleteExecer
+}
+
+func (db *DeleteBuilder) Exec(ctx context.Context) error {
+	_, err := db.DeleteExecer.Exec(ctx)
+	return err
+}
+
+type Changeset interface {
+	Execer
+	Name() string
+	AlwaysTx() bool
+	setAlwaysTx()
+}
+
+type OneChangeset struct {
+	name string
+	alwaysTx bool
+	Execer
+}
+
+type BulkChangeset struct {
+	name string
+	alwaysTx bool
+	Execer
+}
+
+func (oc *OneChangeset) Name() string {
+	return oc.name
+}
+
+func (bc *BulkChangeset) Name() string {
+	return bc.name
+}
+
+func (oc *OneChangeset) AlwaysTx() bool {
+	return oc.alwaysTx
+}
+
+func (bc *BulkChangeset) AlwaysTx() bool {
+	return bc.alwaysTx
+}
+
+func (oc *OneChangeset) setAlwaysTx() {
+	oc.alwaysTx = true
+}
+
+func (bc *BulkChangeset) setAlwaysTx() {
+	bc.alwaysTx = true
+}
+
+type ChangesetOption func(Changeset)
+
+// Runs this changeset as a transaction with the main builder regardless of the parent Client
+func AlwaysTx() ChangesetOption {
+	return func(c Changeset) {
+		c.setAlwaysTx()
+	}
+}
+
+func NewOneChangeset(name string, execer Execer, options ...ChangesetOption) *OneChangeset {
+	changeset := &OneChangeset{name: name, Execer: execer}
+	for _, option := range options {
+		option(changeset)
+	}
+	return changeset
+}
+
+func NewBulkChangeset(name string, execer Execer, options ...ChangesetOption) *BulkChangeset {
+	changeset := &BulkChangeset{name: name, Execer: execer}
+	for _, option := range options {
+		option(changeset)
+	}
+	return changeset
+}
+
+type ActionFn func(ctx context.Context) error
+
+{{- range $node := $.Nodes }}
+{{- $updateOneReceiver := receiver $node.UpdateOneName }}
+{{- $bulk := printf "%sCreateBulk" (pascal $node.Name) }}
+{{- $bulkReceiver := receiver $bulk }}
+func ({{$bulkReceiver}} *{{$bulk}}) MakeChangeset(name string, options ...ChangesetOption) *BulkChangeset {
+	return NewBulkChangeset(name, {{$bulkReceiver}}, options...)
+}
+
+func ({{$bulkReceiver}} *{{$bulk}}) setConfig(config config) {
+	{{$bulkReceiver}}.config = config
+	for _, builder := range {{$bulkReceiver}}.builders {
+		builder.config = config
+		builder.mutation.config = config
+	}
+}
+
+func ({{$node.CreateReceiver}} *{{$node.CreateName}}) MakeChangeset(name string, options ...ChangesetOption) *OneChangeset {
+	return NewOneChangeset(name, {{$node.CreateReceiver}}, options...)
+}
+
+func ({{$node.CreateReceiver}} *{{$node.CreateName}}) setConfig(config config) {
+	{{$node.CreateReceiver}}.config = config
+	{{$node.CreateReceiver}}.mutation.config = config
+}
+
+func ({{$node.UpdateReceiver}} *{{$node.UpdateName}}) MakeChangeset(name string, options ...ChangesetOption) *BulkChangeset {
+	return NewBulkChangeset(name, {{$node.UpdateReceiver}}, options...)
+}
+
+func ({{$node.UpdateReceiver}} *{{$node.UpdateName}}) setConfig(config config) {
+	{{$node.UpdateReceiver}}.config = config
+	{{$node.UpdateReceiver}}.mutation.config = config
+}
+
+func ({{$node.UpdateOneReceiver}} *{{$node.UpdateOneName}}) MakeChangeset(name string, options ...ChangesetOption) *OneChangeset {
+	return NewOneChangeset(name, {{$node.UpdateOneReceiver}}, options...)
+}
+
+func ({{$node.UpdateOneReceiver}} *{{$node.UpdateOneName}}) setConfig(config config) {
+	{{$node.UpdateOneReceiver}}.config = config
+	{{$node.UpdateOneReceiver}}.mutation.config = config
+}
+
+func ({{$node.UpdateOneReceiver}} *{{$node.Name}}UpsertOne) MakeChangeset(name string, options ...ChangesetOption) *OneChangeset {
+	return NewOneChangeset(name, {{$node.UpdateOneReceiver}}, options...)
+}
+
+func ({{$node.UpdateOneReceiver}} *{{$node.Name}}UpsertOne) setConfig(config config) {
+	{{$node.UpdateOneReceiver}}.create.config = config
+	{{$node.UpdateOneReceiver}}.create.mutation.config = config
+}
+
+func ({{$node.DeleteReceiver}} *{{$node.DeleteName}}) MakeChangeset(name string, options ...ChangesetOption) *BulkChangeset {
+	db := &DeleteBuilder{ {{$node.DeleteReceiver}} }
+	return NewBulkChangeset(name, db, options...)
+}
+
+func ({{$node.DeleteReceiver}} *{{$node.DeleteName}}) setConfig(config config) {
+	{{$node.DeleteReceiver}}.config = config
+	{{$node.DeleteReceiver}}.mutation.config = config
+}
+
+func ({{$node.DeleteOneReceiver}} *{{$node.DeleteOneName}}) MakeChangeset(name string, options ...ChangesetOption) *OneChangeset {
+	return NewOneChangeset(name, {{$node.DeleteOneReceiver}}, options...)
+}
+
+func ({{$node.DeleteOneReceiver}} *{{$node.DeleteOneName}}) setConfig(config config) {
+	{{$node.DeleteOneReceiver}}.{{$node.DeleteReceiver}}.config = config
+	{{$node.DeleteOneReceiver}}.{{$node.DeleteReceiver}}.mutation.config = config
+}
+
+{{ if eq $node.EdgeSchema.ID nil}}
+func ({{$bulkReceiver}} *{{$bulk}}) EntRefs() []*{{$node.Name}} {
+	{{lower $node.Name}}s := make([]*{{$node.Name}}, len({{$bulkReceiver}}.builders))
+	for i, builder := range {{$bulkReceiver}}.builders {
+		id, ok := builder.mutation.ID()
+		if !ok {
+			id = {{lower $node.Name}}.DefaultID()
+			builder.mutation.SetID(id)
+		}
+		{{lower $node.Name}}s[i] = &{{$node.Name}}{ID: id}
+	}
+	return {{lower $node.Name}}s
+}
+
+func ({{$node.CreateReceiver}} *{{$node.CreateName}}) EntRef() *{{$node.Name}} {
+	id, ok := {{$node.CreateReceiver}}.mutation.ID()
+	if !ok {
+		id = {{lower $node.Name}}.DefaultID()
+		{{$node.CreateReceiver}}.mutation.SetID(id)
+	}
+	return &{{$node.Name}}{ID: id}
+}
+
+func ({{$node.UpdateOneReceiver}} *{{$node.UpdateOneName}}) EntRef() *{{$node.Name}} {
+	id := {{$node.UpdateOneReceiver}}.mutation.id
+	return &{{$node.Name}}{ID: *id}
+}
+
+func ({{$node.UpdateOneReceiver}} *{{$node.Name}}UpsertOne) EntRef() *{{$node.Name}} {
+	id, ok := {{$node.UpdateOneReceiver}}.create.mutation.ID()
+	if !ok {
+		id = {{lower $node.Name}}.DefaultID()
+		{{$node.UpdateOneReceiver}}.create.mutation.SetID(id)
+	}
+	return &{{$node.Name}}{ID: id}
+}
+
+func ({{$node.DeleteOneReceiver}} *{{$node.DeleteOneName}}) EntRef() *{{$node.Name}} {
+	id := {{$node.DeleteOneReceiver}}.{{$node.DeleteReceiver}}.mutation.id
+	return &{{$node.Name}}{ID: *id}
+}
+{{ end }}
+{{ end }}
+{{ end }}

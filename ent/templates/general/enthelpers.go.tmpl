@@ -1,0 +1,67 @@
+{{ define "enthelpers" }}
+{{ $pkg := base $.Config.Package }}
+
+{{ template "header" $ }}
+
+
+type WithOrgID interface {
+	OrganizationID() (r pulid.ID, exists bool)
+	Client() *Client
+}
+
+func OrgFromMutation(ctx context.Context, mutation WithOrgID) *Organization {
+	vc := viewer.FromContext(ctx)
+	orgID, ok := mutation.OrganizationID()
+	if !ok {
+		orgID = vc.OrgID
+	}
+
+	return &Organization{ID: orgID, config: mutation.Client().config}
+}
+
+{{- range $node := $.Nodes }}
+
+	// New{{ $node.Name }}WithClient returns the given {{ $node.Name }} but with the
+	// passed client instead of the one it was fetched with.
+	func New{{ $node.Name }}WithClient({{ $node.Receiver }} {{ $node.Name }}, client *Client) *{{ $node.Name }} {
+		new{{ $node.Name }} := {{ $node.Receiver }}
+		{{ $node.Receiver }}.config = client.config
+		return &new{{ $node.Name }}
+	}
+
+	{{ if eq $node.EdgeSchema.ID nil}}
+	func (m *{{ $node.Name }}Mutation) OldValue(ctx context.Context) (*{{ $node.Name }}, error) {
+		switch {
+		case m.op.Is(OpUpdateOne | OpDeleteOne):
+			id, exists := m.ID()
+			if exists {
+				return m.Client().{{ $node.Name }}.Get(ctx, id)
+			}
+			fallthrough
+		default:
+			return nil, fmt.Errorf("OldValue is not allowed on %s operations", m.op)
+		}
+	}
+
+	func (m *{{ $node.Name }}Mutation) OldValues(ctx context.Context) ([]*{{ $node.Name }}, error) {
+		switch {
+		case m.op.Is(OpUpdateOne | OpDeleteOne):
+			id, exists := m.ID()
+			if exists {
+				v, err := m.Client().{{ $node.Name }}.Get(ctx, id)
+				if err != nil {
+					return nil, fmt.Errorf("querying for singular old value: %w", err)
+				}
+				return []*{{ $node.Name }}{v}, nil
+			}
+			fallthrough
+		case m.op.Is(OpUpdate | OpDelete):
+			return m.Client().{{ $node.Name }}.Query().Where(m.predicates...).All(ctx)
+		default:
+			return nil, fmt.Errorf("OldValues is not allowed on %s operations", m.op)
+		}
+	}
+	{{ end }}
+
+{{- end }}
+{{ end }}

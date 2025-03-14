@@ -1,0 +1,25 @@
+{{- define "where/additional/actor" -}}
+
+{{- $isWithActor := ne (index $.Annotations "WithActor") nil -}}
+
+{{- if $isWithActor }}
+	// Applies equality check against actor for the current viewer.
+	func ActorIsViewer(ctx context.Context) predicate.{{ $.Name }} {
+		vc := viewer.FromContext(ctx)
+		return Or(UserID(vc.ID), AgentID(vc.ID))
+	}
+
+	// ActorID applies equality check predicate on the actor ID fields.
+	func ActorID(id pulid.ID) predicate.{{ $.Name }} {
+		return Or(UserID(id), AgentID(id))
+	}
+
+	// ActorID applies equality check predicate on the actor ID fields.
+	func ActorIDNEQ(id pulid.ID) predicate.{{ $.Name }} {
+		return And(UserIDNEQ(id), AgentIDNEQ(id))
+	}
+
+
+{{ end -}}
+
+{{ end }}

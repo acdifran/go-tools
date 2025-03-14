@@ -1,0 +1,224 @@
+{{ define "withactor" }}
+
+{{ $pkg := base $.Config.Package }}
+{{ template "header" $ }}
+
+type WithActor interface {
+	{{- range $node := $.Nodes }}
+		{{- if (ne (index $node.Annotations "Actor") nil) }}
+			{{ $node.Name }} (ctx context.Context) (*{{ $node.Name }}, error)
+		{{- end }}
+	{{- end }}
+	Actor(ctx context.Context) (Actor, error)
+	ActorOrErr() (Actor, error)
+	GetActorType() actortype.ActorType
+	ActorID() *pulid.ID
+}
+
+{{- range $node := $.Nodes }}
+	{{- if (ne (index $node.Annotations "WithActor") nil) }}
+		func ({{ $node.Receiver }} *{{ $node.Name }}) Actor(ctx context.Context) (Actor, error) {
+			item, err := ActorFromWithActor(ctx, {{ $node.Receiver }})
+			if err != nil {
+				return nil, fmt.Errorf("Getting Actor from {{ $node.Name }}: %w", err)
+			}
+			return item, nil
+		}
+
+		func ({{ $node.Receiver }} *{{ $node.Name }}) ActorOrErr() (Actor, error) {
+			actorType := {{ $node.Receiver }}.GetActorType()
+			switch actorType {
+				{{- range $innernode := $.Nodes }}
+					{{- if (ne (index $innernode.Annotations "Actor") nil) }}
+						case actortype.{{ $innernode.Name }}:
+							return {{ $node.Receiver }}.Edges.{{ $innernode.Name }}OrErr()
+					{{- end }}
+				{{- end }}
+			}
+			return nil, fmt.Errorf("Unknown type of Actor %s", actorType)
+		}
+
+		func ({{ $node.Receiver }} *{{ $node.Name }}) GetActorType() actortype.ActorType {
+			return {{ $node.Receiver }}.ActorType
+		}
+
+		func ({{ $node.Receiver }} *{{ $node.Name }}Create) SetActorID(ID pulid.ID) *{{ $node.Name }}Create {
+			actorType := GetActorTypeFromID(ID)
+			{{ $node.Receiver }}.SetActorType(actorType)
+			switch actorType {
+				{{- range $innernode := $.Nodes }}
+					{{- if (ne (index $innernode.Annotations "Actor") nil) }}
+						case actortype.{{ $innernode.Name }}:
+							{{ $node.Receiver }} = {{ $node.Receiver }}.Set{{ $innernode.Name }}ID(ID)
+					{{- end }}
+				{{- end }}
+			}
+			return {{ $node.Receiver }}
+		}
+
+		func ({{ $node.Receiver }} *{{ $node.Name }}Mutation) SetActorID(ID pulid.ID) {
+			actorType := GetActorTypeFromID(ID)
+			{{ $node.Receiver }}.SetActorType(actorType)
+			switch actorType {
+				{{- range $innernode := $.Nodes }}
+					{{- if (ne (index $innernode.Annotations "Actor") nil) }}
+						case actortype.{{ $innernode.Name }}:
+							{{ $node.Receiver }}.Set{{ $innernode.Name }}ID(ID)
+					{{- end }}
+				{{- end }}
+			}
+		}
+
+		func ({{ $node.Receiver }} *{{ $node.Name }}Mutation) ActorID() (r pulid.ID, exists bool) {
+			{{- range $innernode := $.Nodes }}
+				{{- if (ne (index $innernode.Annotations "Actor") nil) }}
+					if {{ $node.Receiver }}.{{ snake $innernode.Name }} != nil {
+						return *{{ $node.Receiver }}.{{ snake $innernode.Name }}, true
+					}
+				{{- end }}
+			{{- end }}
+			return
+		}
+
+		func ({{ $node.Receiver }} *{{ $node.Name }}) ActorID() *pulid.ID {
+			{{- range $innernode := $.Nodes }}
+				{{- if (ne (index $innernode.Annotations "Actor") nil) }}
+					if {{ $node.Receiver }}.{{ $innernode.Name }}ID != nil {
+						return {{ $node.Receiver }}.{{ $innernode.Name }}ID
+					}
+				{{- end }}
+			{{- end }}
+			return nil
+		}
+
+		func ({{ $node.Receiver }} *{{ $node.Name }}Query) ActorCollectFields(
+			ctx context.Context,
+			field graphql.CollectedField,
+			path *[]string,
+			fieldSeen map[string]struct{},
+			selectedFields *[]string,
+			oneNode bool,
+			opCtx *graphql.OperationContext,
+			satisfies ...string,
+		) error {
+			return ActorCollectFields(
+				ctx,
+				{{ $node.Receiver }},
+				{{ $node.Receiver }}.config,
+				field,
+				path,
+				fieldSeen,
+				selectedFields,
+				oneNode,
+				opCtx,
+				satisfies...)
+		}
+
+		func ({{$node.Receiver}} *{{$node.Name}}Query) WithActor() *{{$node.Name}}Query {
+			{{- range $innerNode := $.Nodes }}
+				{{- if (ne (index $innerNode.Annotations "Actor") nil) }}
+					{{$node.Receiver}} = {{$node.Receiver}}.With{{$innerNode.Name}}()
+				{{- end }}
+			{{- end }}
+			return {{$node.Receiver}}
+		}
+
+		{{ $first := true }}
+		func (f *{{ $node.Name }}Filter) WhereActorIDEQ(id pulid.ID) {
+			f.Where(entql.Or({{ range $i, $node := $.Nodes -}}
+				{{- if (ne (index $node.Annotations "Actor") nil) -}}
+					{{- if not $first }}, {{end}}entql.StringEQ(string(id)).Field("{{ lower $node.Name }}_id")
+					{{- $first = false -}}
+				{{- end -}}
+				{{- end -}}))
+		}
+
+	{{- end }}
+{{- end }}
+
+func ActorFromWithActor(ctx context.Context, w WithActor) (Actor, error) {
+	actorType := w.GetActorType()
+	switch actorType {
+		{{- range $node := $.Nodes }}
+			{{- if (ne (index $node.Annotations "Actor") nil) }}
+				case actortype.{{ $node.Name }}:
+					return w.{{ $node.Name }}(ctx)
+			{{- end }}
+		{{- end }}
+	}
+	return nil, fmt.Errorf("Unknown type of Actor, %s on this WithActor", actorType)
+}
+
+type WithActorQuery[T any] interface {
+	{{- range $node := $.Nodes }}
+		{{- if (ne (index $node.Annotations "Actor") nil) }}
+			With{{ $node.Name }} (opts ...func(*{{ $node.Name }}Query)) T
+		{{- end }}
+	{{- end }}
+}
+
+func ActorCollectFields[T WithActorQuery[T]](
+	ctx context.Context,
+	wa T,
+	config config,
+	field graphql.CollectedField,
+	path *[]string,
+	fieldSeen map[string]struct{},
+	selectedFields *[]string,
+	oneNode bool,
+	opCtx *graphql.OperationContext,
+	satisfies ...string,
+) error {
+	alias := field.Alias
+
+	{{ range $node := $.Nodes }}
+		{{- if (ne (index $node.Annotations "Actor") nil) }}
+			{{ $node.Receiver }}query := (&{{ $node.Name }}Client{config: config}).Query()
+
+			*path = append(*path, alias)
+			if err := {{ $node.Receiver }}query.collectField(ctx, oneNode, opCtx, field, *path, mayAddCondition(satisfies, {{ nodeImplementorsVar $node }})...); err != nil {
+				return err
+			}
+
+			wa.With{{ $node.Name }}(func({{ $node.Receiver }} *{{ $node.Name }}Query) {
+				*{{ $node.Receiver }} = *{{ $node.Receiver }}query
+			})
+
+			field{{ $node.Name }}ID := "{{ snake $node.Name }}_id"
+			if _, ok := fieldSeen[field{{ $node.Name }}ID]; !ok {
+				*selectedFields = append(*selectedFields, field{{ $node.Name }}ID)
+				fieldSeen[field{{ $node.Name }}ID] = struct{}{}
+			}
+
+		{{ end }}
+	{{- end }}
+			if _, ok := fieldSeen["actor_type"]; !ok {
+				*selectedFields = append(*selectedFields, "actor_type")
+				fieldSeen["actor_type"] = struct{}{}
+			}
+
+	return nil
+}
+
+type ActorIDs struct {
+	{{- range $node := $.Nodes }}
+		{{- if (ne (index $node.Annotations "Actor") nil) }}
+			{{ $node.Name }}ID *pulid.ID
+		{{- end }}
+	{{- end }}
+}
+
+func GetActorTypeFromID(ID pulid.ID) actortype.ActorType {
+	prefix := ID[:2]
+	switch prefix {
+		{{- range $node := $.Nodes }}
+			{{- if (ne (index $node.Annotations "Actor") nil) }}
+				case "{{ $node.Annotations.PULID.Prefix }}":
+					return actortype.{{ $node.Name }}
+			{{- end }}
+		{{- end }}
+	}
+	return actortype.User
+}
+
+{{ end }}

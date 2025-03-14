@@ -1,0 +1,45 @@
+{{ define "actor" }}
+
+{{ $pkg := base $.Config.Package }}
+{{ template "header" $ }}
+
+func ActorFromCtx(ctx context.Context) (Actor, error) {
+	vc := viewer.FromContext(ctx)
+	client := FromContext(ctx)
+
+	if vc.IsAgent() {
+		return client.Agent.Get(ctx, vc.ID)
+	}
+	return client.User.Get(ctx, vc.ID)
+}
+
+type Actor interface {
+	DisplayName() string
+}
+
+{{- range $node := $.Nodes }}
+	{{- if (ne (index $node.Annotations "Actor") nil) }}
+		func ({{$node.Receiver}} *{{$node.Name}}) DisplayName() string {
+			names := make([]string, 0, 2)
+			if {{$node.Receiver}}.FirstName != nil && *{{$node.Receiver}}.FirstName != "" {
+				names = append(names, *{{$node.Receiver}}.FirstName)
+			}
+			if {{$node.Receiver}}.LastName != nil && *{{$node.Receiver}}.LastName != "" {
+				names = append(names, *{{$node.Receiver}}.LastName)
+			}
+
+			name := strings.Join(names, " ")
+			if name != "" {
+				return name
+			}
+
+			if {{$node.Receiver}}.Username != nil {
+				return *{{$node.Receiver}}.Username
+			}
+			return ""
+		}
+
+	{{ end }}
+{{- end }}
+
+{{- end -}}
