@@ -4,21 +4,31 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/acdifran/go-tools/common"
 	"github.com/acdifran/go-tools/pulid"
 	"github.com/samber/lo"
 	"github.com/stripe/stripe-go/v78"
 )
 
+type OrderItem struct {
+	ID    pulid.ID
+	Name  string
+	Price int
+}
+
+type PaymentSessionResponse struct {
+	ID  string
+	Url string
+}
+
 func (s *StripePaymentProcessor) CreateSession(
 	accountID string,
 	orderID pulid.ID,
 	redirectUrl string,
-	orderItems ...common.PaymentOrderItem,
-) (*common.PaymentSessionResponse, error) {
+	orderItems ...OrderItem,
+) (*PaymentSessionResponse, error) {
 	lineItems := lo.Map(
 		orderItems,
-		func(orderItem common.PaymentOrderItem, i int) *stripe.CheckoutSessionLineItemParams {
+		func(orderItem OrderItem, i int) *stripe.CheckoutSessionLineItemParams {
 			return &stripe.CheckoutSessionLineItemParams{
 				Quantity: stripe.Int64(1),
 				PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
@@ -45,7 +55,7 @@ func (s *StripePaymentProcessor) CreateSession(
 		return nil, fmt.Errorf("creating stripe checkout session: %w", err)
 	}
 
-	return &common.PaymentSessionResponse{
+	return &PaymentSessionResponse{
 		Url: session.URL,
 		ID:  session.ID,
 	}, nil

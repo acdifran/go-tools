@@ -3,14 +3,17 @@ package s3filestore
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type S3FileStore struct {
-	Client     *s3.Client
-	BucketName string
+	Client                           *s3.Client
+	BucketName                       string
+	DefaultObjectCacheDuration       *time.Duration
+	DefaultPresignExpirationDuration time.Duration
 }
 
 func NewS3FileStore(bucketName string, region string) *S3FileStore {
@@ -20,5 +23,6 @@ func NewS3FileStore(bucketName string, region string) *S3FileStore {
 	}
 
 	s3Client := s3.NewFromConfig(cfg)
-	return &S3FileStore{s3Client, bucketName}
+
+	return &S3FileStore{Client: s3Client, BucketName: bucketName}
 }

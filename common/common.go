@@ -7,19 +7,3 @@ type AccountInfo struct {
 	Name  string
 	Email string
 }
-
-type PaymentOrderItem struct {
-	ID    pulid.ID
-	Name  string
-	Price int
-}
-
-type PaymentSessionResponse struct {
-	ID  string
-	Url string
-}
-
-type PresignedUrlObj struct {
-	Key string `json:"key"`
-	URL string `json:"url"`
-}
