@@ -54,4 +54,30 @@ func SetActorHook() func(next ent.Mutator) ent.Mutator {
 	}
 }
 
+type MutationWithUser interface {
+	UserID() (r pulid.ID, exits bool)
+	SetUserID(id pulid.ID)
+}
+
+func SetUserHook() func(next ent.Mutator) ent.Mutator {
+	return func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			vc := viewer.FromContext(ctx)
+			if vc.IsAnonymous() {
+				return nil, fmt.Errorf("viewer has no identity")
+			}
+
+			tm, ok := m.(MutationWithUser)
+			if !ok {
+				return nil, fmt.Errorf("unexptected mutation type %T", m)
+			}
+
+			if _, ok := tm.UserID(); !ok {
+				tm.SetUserID(vc.ID)
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+}
+
 {{ end }}

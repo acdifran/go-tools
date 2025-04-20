@@ -54,12 +54,6 @@ func AllowIfOrgAdmin() privacy.QueryMutationRule {
 	})
 }
 
-type WithOwnerAndOrgMutation interface {
-	OwnerID() (pulid.ID, bool)
-	OrganizationID() (pulid.ID, bool)
-	ent.Mutation
-}
-
 type WithOrgMutation interface {
 	OrganizationID() (pulid.ID, bool)
 	ent.Mutation
@@ -122,23 +116,37 @@ func DenyIfActorMismatchedRule() privacy.MutationRule {
 	)
 }
 
-
-type ActorFilter interface {
-	WhereActorIDEQ(id pulid.ID)
+type MutationWithUser interface {
+	UserID() (r pulid.ID, exits bool)
+	SetUserID(ID pulid.ID)
 }
 
-func FilterByViewerIsActorRule() privacy.QueryMutationRule {
-	return privacy.FilterFunc(func(ctx context.Context, f privacy.Filter) error {
-		tf, ok := f.(ActorFilter)
-		if !ok {
-			return privacy.Denyf("unexpected filter type %T", f)
-		}
+func DenyIfUserMismatchedRule() privacy.MutationRule {
+	return privacy.MutationRuleFunc(
+		func(ctx context.Context, m ent.Mutation) error {
+			tm, ok := m.(MutationWithUser)
+			if !ok {
+				return privacy.Denyf(
+					"%s: unexpected ent mutation type %T",
+					utils.GetFuncName(),
+					m,
+				)
+			}
 
-		vc := viewer.FromContext(ctx)
-		tf.WhereActorIDEQ(vc.ID)
+			vc := viewer.FromContext(ctx)
+			userID, ok := tm.UserID()
 
-		return privacy.Skip
-	})
+			if ok && userID != vc.ID {
+				return privacy.Denyf(
+					"viewer does not match; vc.ID: %s is not userID: %s",
+					vc.ID,
+					userID,
+				)
+			}
+
+			return privacy.Skip
+		},
+	)
 }
 
 type OrgFilter interface {
@@ -162,6 +170,24 @@ func FilterByViewerOrgRule() privacy.QueryMutationRule {
 		} else {
 			tf.WhereOrganizationID(entql.StringNil())
 		}
+		return privacy.Skip
+	})
+}
+
+type ActorFilter interface {
+	WhereActorIDEQ(id pulid.ID)
+}
+
+func FilterByViewerIsActorRule() privacy.QueryMutationRule {
+	return privacy.FilterFunc(func(ctx context.Context, f privacy.Filter) error {
+		tf, ok := f.(ActorFilter)
+		if !ok {
+			return privacy.Denyf("unexpected filter type %T", f)
+		}
+
+		vc := viewer.FromContext(ctx)
+		tf.WhereActorIDEQ(vc.ID)
+
 		return privacy.Skip
 	})
 }
