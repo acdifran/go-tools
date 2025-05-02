@@ -1,20 +1,20 @@
-package centrifugo
+package centrifugomessenger
 
 import (
 	"crypto/tls"
 	"log"
 
-	"github.com/acdifran/go-tools/centrifugo/apiproto"
+	"github.com/acdifran/go-tools/centrifugomessenger/apiproto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type CentrifugoClient struct {
+type CentrifugoMessenger struct {
 	client apiproto.CentrifugoApiClient
 }
 
-func NewCentrifugoClient(endpoint string, enableTLS bool) *CentrifugoClient {
+func New(endpoint string, enableTLS bool) *CentrifugoMessenger {
 	creds := insecure.NewCredentials()
 
 	if enableTLS {
@@ -28,5 +28,5 @@ func NewCentrifugoClient(endpoint string, enableTLS bool) *CentrifugoClient {
 	if err != nil {
 		log.Fatalf("could not initialize centrifugo client: %s", err.Error())
 	}
-	return &CentrifugoClient{apiproto.NewCentrifugoApiClient(conn)}
+	return &CentrifugoMessenger{apiproto.NewCentrifugoApiClient(conn)}
 }

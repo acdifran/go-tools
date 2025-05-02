@@ -8,7 +8,7 @@ import (
 	expo "github.com/oliveroneill/exponent-server-sdk-golang/sdk"
 )
 
-func (e *ExpoPushNotifClient) SendPushNotif(
+func (e *ExpoPushNotif) SendPushNotif(
 	recipientTokens []string,
 	title string,
 	body string,
@@ -22,8 +22,8 @@ func (e *ExpoPushNotifClient) SendPushNotif(
 			pushToken, err := expo.NewExponentPushToken(rt)
 			if err != nil {
 				slog.Error(
-					fmt.Errorf("getting push token: %w", err).
-						Error(),
+					"getting push token",
+					"error", err,
 				)
 			}
 
@@ -39,8 +39,8 @@ func (e *ExpoPushNotifClient) SendPushNotif(
 			)
 			if err != nil {
 				slog.Error(
-					fmt.Errorf("sending push notif: %w", err).
-						Error(),
+					"sending push notif",
+					"error", err,
 				)
 			}
 			if response.ValidateResponse() != nil {

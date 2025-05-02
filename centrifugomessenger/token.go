@@ -1,8 +1,7 @@
-package centrifugo
+package centrifugomessenger
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -32,7 +31,7 @@ func GetConnectionToken(secret string) func(http.ResponseWriter, *http.Request) 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		tokenString, err := token.SignedString([]byte(secret))
 		if err != nil {
-			slog.Error(fmt.Errorf("signing connection token: %w", err).Error())
+			slog.Error("signing connection token", "error", err)
 			http.Error(w, toolshttp.InternalServerError, http.StatusInternalServerError)
 			return
 		}
@@ -40,7 +39,7 @@ func GetConnectionToken(secret string) func(http.ResponseWriter, *http.Request) 
 		response := TokenResponse{Token: tokenString}
 		jsonResponse, err := json.Marshal(response)
 		if err != nil {
-			slog.Error(fmt.Errorf("marshalling token response: %w", err).Error())
+			slog.Error("marshalling token response", "error", err)
 			http.Error(w, toolshttp.InternalServerError, http.StatusInternalServerError)
 			return
 		}
@@ -48,7 +47,7 @@ func GetConnectionToken(secret string) func(http.ResponseWriter, *http.Request) 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write(jsonResponse); err != nil {
-			slog.Error(fmt.Errorf("writing token response: %w", err).Error())
+			slog.Error("writing token response", "error", err)
 			http.Error(w, toolshttp.InternalServerError, http.StatusInternalServerError)
 		}
 	}

@@ -3,6 +3,7 @@ package logger
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"log/slog"
@@ -48,7 +49,14 @@ func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	fields := make(map[string]any, r.NumAttrs())
 	r.Attrs(func(a slog.Attr) bool {
-		fields[a.Key] = a.Value.Any()
+		switch v := a.Value.Any().(type) {
+		case error:
+			fields[a.Key] = v.Error()
+		case fmt.Stringer:
+			fields[a.Key] = v.String()
+		default:
+			fields[a.Key] = v
+		}
 
 		return true
 	})

@@ -2,7 +2,6 @@ package viewer
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/acdifran/go-tools/membershiprole"
 	"github.com/acdifran/go-tools/pulid"
@@ -31,18 +30,6 @@ type Context struct {
 	AccountID         string
 	OrgAccountID      string
 	OrgMembershipRole membershiprole.MembershipRole
-}
-
-func (c *Context) String() string {
-	if c.IsAnonymous() {
-		return fmt.Sprintf("VC(Role: %s)", c.Role)
-	}
-	return fmt.Sprintf(
-		"VC(Role: %s, ID: %s, OrgID: %s)",
-		c.Role,
-		c.ID,
-		c.OrgID,
-	)
 }
 
 func (v *Context) IsAnonymous() bool {

@@ -42,6 +42,14 @@ type WithActor interface {
 			return {{ $node.Receiver }}.ActorType
 		}
 
+		func ({{ $node.Receiver }} *{{ $node.Name }}) FromAgent() bool {
+			return {{ $node.Receiver }}.ActorType == actortype.Agent
+		}
+
+		func ({{ $node.Receiver }} *{{ $node.Name }}) FromUser() bool {
+			return {{ $node.Receiver }}.ActorType == actortype.User
+		}
+
 		func ({{ $node.Receiver }} *{{ $node.Name }}Create) SetActorID(ID pulid.ID) *{{ $node.Name }}Create {
 			actorType := GetActorTypeFromID(ID)
 			{{ $node.Receiver }}.SetActorType(actorType)

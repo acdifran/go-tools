@@ -1,4 +1,4 @@
-package centrifugo
+package centrifugomessenger
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/acdifran/go-tools/centrifugo/apiproto"
+	"github.com/acdifran/go-tools/centrifugomessenger/apiproto"
 	"github.com/acdifran/go-tools/pulid"
 )
 
@@ -16,7 +16,7 @@ type Message struct {
 	Type string   `json:"type"`
 }
 
-func (c *CentrifugoClient) SendMessage(
+func (c *CentrifugoMessenger) SendMessage(
 	ctx context.Context,
 	message *Message,
 	recipients []string,
@@ -42,7 +42,7 @@ func newPayload(message *Message) ([]byte, error) {
 	return data, nil
 }
 
-func (c *CentrifugoClient) sendMessage(
+func (c *CentrifugoMessenger) sendMessage(
 	ctx context.Context,
 	recipients []string,
 	data []byte,

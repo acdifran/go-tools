@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -24,7 +23,7 @@ func EnableCORS(clientURL string) func(http.Handler) http.Handler {
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 				w.Header().
-					Set("Access-Control-Allow-Headers", "Accept, Content-Type, X-CSRF-Token, Authorization")
+					Set("Access-Control-Allow-Headers", "Accept, Content-Type, X-CSRF-Token, Authorization, Vc-Override-Id, Vc-Override-Org-Id")
 				return
 			}
 
@@ -61,7 +60,7 @@ func createAuthViewerContext(
 ) *viewer.Context {
 	customClaims := claims.Custom.(*CustomClaims)
 	if customClaims == nil {
-		slog.Error(fmt.Sprintf("missing custom claims: %v", claims.Subject))
+		slog.Error("missing custom claims", "subjet", claims.Subject)
 		return viewer.LoggedOutContext()
 	}
 	orgID := customClaims.OrgID
@@ -82,7 +81,7 @@ func createAuthViewerContext(
 	}
 
 	if customClaims.UserID == "" {
-		slog.Error(fmt.Sprintf("missing user ID in claims: %v", claims.Subject))
+		slog.Error("missing user ID in claims", "subjet", claims.Subject)
 		return viewer.LoggedOutContext()
 	}
 
@@ -120,12 +119,12 @@ func AuthenticateWithClerk(
 
 			claims, ok := clerk.SessionClaimsFromContext(ctx)
 			if !ok || claims == nil {
-				slog.Warn(
-					"request missing auth session claims",
-					"Authorization", r.Header.Get("Authorization"),
-					"URI", r.RequestURI,
-					"RemmoteAddr", r.RemoteAddr,
-				)
+				// slog.Warn(
+				// 	"request missing auth session claims",
+				// 	"Authorization", r.Header.Get("Authorization"),
+				// 	"URI", r.RequestURI,
+				// 	"RemmoteAddr", r.RemoteAddr,
+				// )
 
 				next.ServeHTTP(w, r.WithContext(loggedOutVC(ctx)))
 				return
@@ -133,8 +132,8 @@ func AuthenticateWithClerk(
 
 			authContext := createAuthViewerContext(
 				claims,
-				r.Header.Get("VC_OVERRIDE_ID"),
-				r.Header.Get("VC_OVERRIDE_ORG_ID"),
+				r.Header.Get("Vc-Override-Id"),
+				r.Header.Get("Vc-Override-Org-Id"),
 			)
 
 			next.ServeHTTP(
@@ -152,4 +151,59 @@ func WithCustomClaims() clerkhttp.AuthorizationOption {
 		}
 		return nil
 	}
+}
+
+func UseIf(
+	shouldRun func(r *http.Request) bool,
+	mw func(http.Handler) http.Handler,
+) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if shouldRun(r) {
+				mw(next).ServeHTTP(w, r)
+			} else {
+				next.ServeHTTP(w, r)
+			}
+		})
+	}
+}
+
+func SkipIf(
+	shouldSkip func(r *http.Request) bool,
+	mw func(http.Handler) http.Handler,
+) func(http.Handler) http.Handler {
+	return UseIf(func(r *http.Request) bool {
+		return !shouldSkip(r)
+	}, mw)
+}
+
+func Chain(middlewares ...func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	return func(final http.Handler) http.Handler {
+		for i := len(middlewares) - 1; i >= 0; i-- {
+			final = middlewares[i](final)
+		}
+		return final
+	}
+}
+
+func SetManualViewer(
+	newContextFromBase func(ctx context.Context, base *viewer.Context) context.Context,
+) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			authContext := &viewer.Context{
+				ID:    pulid.ID(r.Header.Get("Vc-Override-Id")),
+				OrgID: pulid.ID(r.Header.Get("Vc-Override-Org-Id")),
+			}
+			next.ServeHTTP(
+				w,
+				r.WithContext(newContextFromBase(ctx, authContext)),
+			)
+		})
+	}
+}
+
+func IsViewerOverrideSet(r *http.Request) bool {
+	return r.Header.Get("Vc-Override-Id") != ""
 }

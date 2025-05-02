@@ -4,11 +4,11 @@ import (
 	expo "github.com/oliveroneill/exponent-server-sdk-golang/sdk"
 )
 
-type ExpoPushNotifClient struct {
+type ExpoPushNotif struct {
 	client *expo.PushClient
 }
 
-func NewExpoPushNotifClient() *ExpoPushNotifClient {
+func New() *ExpoPushNotif {
 	client := expo.NewPushClient(nil)
-	return &ExpoPushNotifClient{client}
+	return &ExpoPushNotif{client}
 }

@@ -16,7 +16,7 @@ type S3FileStore struct {
 	DefaultPresignExpirationDuration time.Duration
 }
 
-func NewS3FileStore(bucketName string, region string) *S3FileStore {
+func New(bucketName string, region string) *S3FileStore {
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
 		log.Fatalf("Error initializing AWS Config: %v", err)

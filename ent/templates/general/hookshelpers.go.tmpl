@@ -15,9 +15,9 @@ func RunOnCompletion(ctx context.Context, m MaybeTx, fn func()) {
 				return ent.CommitFunc(func(ctx context.Context, tx *ent.Tx) error {
 					err := next.Commit(ctx, tx)
 					if err != nil {
-						slog.Error(
-							fmt.Errorf("error commiting tx in SendMessage hook: %w", err).
-								Error(),
+						slog.ErrorContext(ctx,
+							"error commiting tx before running on completion",
+							"error", err,
 						)
 						return err
 					}

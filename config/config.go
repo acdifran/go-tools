@@ -47,9 +47,9 @@ func LoadEnv(config any) any {
 		slog.Info("loading: .env")
 	}
 
-	err = env.Parse(&config)
+	err = env.Parse(config)
 	if err != nil {
-		log.Fatalf("failed to parse env vars: %e", err)
+		log.Fatalf("failed to parse env vars: %v", err)
 	}
 
 	return config
