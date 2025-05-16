@@ -13,8 +13,12 @@ func (c *ClerkClient) GetAccountInfoForViewer(
 ) (*common.AccountInfo, error) {
 	vc := viewer.FromContext(ctx)
 
+	if vc.IsAnonymous() {
+		return nil, fmt.Errorf("anonymous user")
+	}
+
 	var name, email string
-	if !vc.HasOrg() {
+	if !vc.HasOrg() || vc.HasPersonalOrg() {
 		user, err := c.UserClient.Get(ctx, vc.AccountID)
 		if err != nil {
 			return nil, fmt.Errorf("getting clerk user: %w", err)

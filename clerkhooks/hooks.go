@@ -22,7 +22,8 @@ type App interface {
 }
 
 type User struct {
-	ID pulid.ID
+	ID            pulid.ID
+	PersonalOrgID *pulid.ID
 }
 
 type Organization struct {
@@ -44,8 +45,9 @@ type OrgInputData struct {
 }
 
 type CreateUserData struct {
-	AccountID  string
-	IsEmployee bool
+	AccountID               string
+	IsEmployee              bool
+	ShouldCreatePersonalOrg bool
 	UserInputData
 }
 
@@ -98,8 +100,9 @@ type userData struct {
 }
 
 type userPublicMetadata struct {
-	UserID string `json:"app_user_id"`
-	Role   string `json:"role"`
+	UserID        string `json:"app_user_id"`
+	PersonalOrgID string `json:"app_personal_org_id"`
+	Role          string `json:"app_user_role"`
 }
 
 type organizationData struct {
@@ -138,7 +141,11 @@ func (c *ClerkHook) GetUserByAccountID(
 	return user, nil
 }
 
-func (c *ClerkHook) handleUserCreated(ctx context.Context, data []byte) error {
+func (c *ClerkHook) handleUserCreated(
+	ctx context.Context,
+	data []byte,
+	shouldCreatePersonalOrg bool,
+) error {
 	var userData userData
 	if err := json.Unmarshal(data, &userData); err != nil {
 		return fmt.Errorf("reading UserData: %w", err)
@@ -185,6 +192,13 @@ func (c *ClerkHook) handleUserCreated(ctx context.Context, data []byte) error {
 	}
 
 	publicMetadata := &userPublicMetadata{UserID: userID, Role: role}
+	if shouldCreatePersonalOrg {
+		if user.PersonalOrgID == nil {
+			return fmt.Errorf("user %s does not have a personal org", user.ID)
+		}
+		publicMetadata.PersonalOrgID = string(*user.PersonalOrgID)
+	}
+
 	publicMetadataJSON, err := json.Marshal(publicMetadata)
 	if err != nil {
 		return fmt.Errorf("writing UserPublicMetadata: %w", err)
@@ -398,9 +412,31 @@ func (c *ClerkHook) handleOrganizationMembershipDeleted(
 	return nil
 }
 
-func (c *ClerkHook) HandleHooks(w http.ResponseWriter, r *http.Request, secretKey string) error {
+type clerkHookOptions struct {
+	shouldCreatePersonalOrg bool
+}
+
+type ClerkHookOption func(*clerkHookOptions)
+
+func WithPersonalOrgs(shouldCreatePersonalOrg bool) ClerkHookOption {
+	return func(opts *clerkHookOptions) {
+		opts.shouldCreatePersonalOrg = shouldCreatePersonalOrg
+	}
+}
+
+func (c *ClerkHook) HandleHooks(
+	w http.ResponseWriter,
+	r *http.Request,
+	secretKey string,
+	opts ...ClerkHookOption,
+) error {
 	ctx := r.Context()
 	ctx = logger.AppendCtx(ctx, slog.String("webhook", "clerk"))
+
+	clerkOpts := &clerkHookOptions{}
+	for _, opt := range opts {
+		opt(clerkOpts)
+	}
 
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -422,7 +458,7 @@ func (c *ClerkHook) HandleHooks(w http.ResponseWriter, r *http.Request, secretKe
 
 	switch event.Type {
 	case "user.created":
-		err = c.handleUserCreated(apVC, event.Data)
+		err = c.handleUserCreated(apVC, event.Data, clerkOpts.shouldCreatePersonalOrg)
 	case "user.updated":
 		err = c.handleUserUpdated(apVC, event.Data)
 	case "organization.created":

@@ -45,12 +45,10 @@ func CookieAuth(next http.Handler) http.Handler {
 }
 
 type CustomClaims struct {
-	OrgID        string `json:"app_org_id"`
-	OrgAccountID string `json:"org_id"`
-	OrgRole      string `json:"org_role"`
-	OrgSlug      string `json:"org_slug"`
-	UserID       string `json:"app_user_id"`
-	Role         string `json:"role"`
+	UserID        string `json:"app_user_id"`
+	Role          string `json:"app_user_role"`
+	OrgID         string `json:"app_org_id"`
+	PersonalOrgID string `json:"app_personal_org_id"`
 }
 
 func createAuthViewerContext(
@@ -63,12 +61,22 @@ func createAuthViewerContext(
 		slog.Error("missing custom claims", "subjet", claims.Subject)
 		return viewer.LoggedOutContext()
 	}
+
+	if customClaims.UserID == "" {
+		slog.Error("missing user ID in claims", "subjet", claims.Subject)
+		return viewer.LoggedOutContext()
+	}
+
 	orgID := customClaims.OrgID
 
 	var orgMembershipRole membershiprole.MembershipRole
+	var orgAccountID string
 	var err error
 	if orgID != "" {
-		orgMembershipRole, err = clerktools.ClerkRoleToMembershipRole(customClaims.OrgRole)
+		orgAccountID = claims.Claims.ActiveOrganizationID
+		orgMembershipRole, err = clerktools.ClerkRoleToMembershipRole(
+			claims.Claims.ActiveOrganizationRole,
+		)
 		if err != nil {
 			slog.Error(err.Error())
 			return viewer.LoggedOutContext()
@@ -80,9 +88,10 @@ func createAuthViewerContext(
 		role = viewer.Employee
 	}
 
-	if customClaims.UserID == "" {
-		slog.Error("missing user ID in claims", "subjet", claims.Subject)
-		return viewer.LoggedOutContext()
+	if customClaims.PersonalOrgID != "" {
+		orgID = customClaims.PersonalOrgID
+		orgAccountID = claims.Subject
+		orgMembershipRole = membershiprole.Admin
 	}
 
 	user := viewer.Context{
@@ -90,7 +99,7 @@ func createAuthViewerContext(
 		ID:                pulid.ID(customClaims.UserID),
 		OrgID:             pulid.ID(orgID),
 		AccountID:         claims.Subject,
-		OrgAccountID:      customClaims.OrgAccountID,
+		OrgAccountID:      orgAccountID,
 		OrgMembershipRole: orgMembershipRole,
 	}
 

@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"context"
+	"strings"
 
 	"github.com/acdifran/go-tools/membershiprole"
 	"github.com/acdifran/go-tools/pulid"
@@ -42,6 +43,10 @@ func (v *Context) HasIdentity() bool {
 
 func (v *Context) HasOrg() bool {
 	return v.OrgID != ""
+}
+
+func (v *Context) HasPersonalOrg() bool {
+	return strings.HasPrefix(v.OrgAccountID, "user_")
 }
 
 func (v *Context) IsAllPowerful() bool {
