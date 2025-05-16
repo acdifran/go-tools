@@ -4,6 +4,11 @@
 
 package {{ $pkg  }}
 
+type MutationWithOrg interface {
+	OrganizationID() (r pulid.ID, exits bool)
+	SetOrganizationID(id pulid.ID)
+}
+
 func SetOrgHook() func(next ent.Mutator) ent.Mutator {
 	return func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
@@ -11,16 +16,15 @@ func SetOrgHook() func(next ent.Mutator) ent.Mutator {
 			if vc.IsAnonymous() {
 				return nil, fmt.Errorf("viewer has no identity")
 			}
+
+			tm, ok := m.(MutationWithOrg)
+			if !ok {
+				return nil, fmt.Errorf("unexptected mutation type %T, expected MutationWithOrg", m)
+			}
+
 			if vc.HasOrg() {
-				if _, ok := m.Field("organization_id"); !ok {
-					err := m.SetField("organization_id", vc.OrgID)
-					if err != nil {
-						return nil, fmt.Errorf(
-							"setting organization_id on %v in hook: %w",
-							m.Type(),
-							err,
-						)
-					}
+				if _, ok := tm.OrganizationID(); !ok {
+					tm.SetOrganizationID(vc.OrgID)
 				}
 			}
 			return next.Mutate(ctx, m)
