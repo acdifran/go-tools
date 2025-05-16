@@ -19,7 +19,7 @@ func SetOrgHook() func(next ent.Mutator) ent.Mutator {
 
 			tm, ok := m.(MutationWithOrg)
 			if !ok {
-				return nil, fmt.Errorf("unexptected mutation type %T, expected MutationWithOrg", m)
+				return nil, fmt.Errorf("unexpected mutation type %T", m)
 			}
 
 			if vc.HasOrg() {
@@ -47,7 +47,7 @@ func SetActorHook() func(next ent.Mutator) ent.Mutator {
 
 			tm, ok := m.(MutationWithActor)
 			if !ok {
-				return nil, fmt.Errorf("unexptected mutation type %T", m)
+				return nil, fmt.Errorf("unexpected mutation type %T", m)
 			}
 
 			if _, ok := tm.ActorID(); !ok {
@@ -73,11 +73,37 @@ func SetUserHook() func(next ent.Mutator) ent.Mutator {
 
 			tm, ok := m.(MutationWithUser)
 			if !ok {
-				return nil, fmt.Errorf("unexptected mutation type %T", m)
+				return nil, fmt.Errorf("unexpected mutation type %T", m)
 			}
 
 			if _, ok := tm.UserID(); !ok {
 				tm.SetUserID(vc.ID)
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+}
+
+type MutationWithCreator interface {
+	CreatorID() (r pulid.ID, exits bool)
+	SetCreatorID(id pulid.ID)
+}
+
+func SetCreatorHook() func(next ent.Mutator) ent.Mutator {
+	return func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			vc := viewer.FromContext(ctx)
+			if vc.IsAnonymous() {
+				return nil, fmt.Errorf("viewer has no identity")
+			}
+
+			tm, ok := m.(MutationWithCreator)
+			if !ok {
+				return nil, fmt.Errorf("unexpected mutation type %T", m)
+			}
+
+			if _, ok := tm.CreatorID(); !ok {
+				tm.SetCreatorID(vc.ID)
 			}
 			return next.Mutate(ctx, m)
 		})
