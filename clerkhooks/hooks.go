@@ -11,7 +11,6 @@ import (
 	"github.com/acdifran/go-tools/logger"
 	"github.com/acdifran/go-tools/membershiprole"
 	"github.com/acdifran/go-tools/pulid"
-	"github.com/acdifran/go-tools/viewer"
 
 	clerkorg "github.com/clerk/clerk-sdk-go/v2/organization"
 	clerkuser "github.com/clerk/clerk-sdk-go/v2/user"
@@ -425,12 +424,12 @@ func WithPersonalOrgs(shouldCreatePersonalOrg bool) ClerkHookOption {
 }
 
 func (c *ClerkHook) HandleHooks(
+	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
 	secretKey string,
 	opts ...ClerkHookOption,
 ) error {
-	ctx := r.Context()
 	ctx = logger.AppendCtx(ctx, slog.String("webhook", "clerk"))
 
 	clerkOpts := &clerkHookOptions{}
@@ -454,23 +453,21 @@ func (c *ClerkHook) HandleHooks(
 		return fmt.Errorf("Failed to parse webhook payload: %w", err)
 	}
 
-	apVC := viewer.AllPowerfulVC(ctx)
-
 	switch event.Type {
 	case "user.created":
-		err = c.handleUserCreated(apVC, event.Data, clerkOpts.shouldCreatePersonalOrg)
+		err = c.handleUserCreated(ctx, event.Data, clerkOpts.shouldCreatePersonalOrg)
 	case "user.updated":
-		err = c.handleUserUpdated(apVC, event.Data)
+		err = c.handleUserUpdated(ctx, event.Data)
 	case "organization.created":
-		err = c.handleOrganizationCreated(apVC, event.Data)
+		err = c.handleOrganizationCreated(ctx, event.Data)
 	case "organization.updated":
-		err = c.handleOrganizationUpdated(apVC, event.Data)
+		err = c.handleOrganizationUpdated(ctx, event.Data)
 	case "organizationMembership.created":
-		err = c.handleOrganizationMembershipCreated(apVC, event.Data)
+		err = c.handleOrganizationMembershipCreated(ctx, event.Data)
 	case "organizationMembership.updated":
-		err = c.handleOrganizationMembershipUpdated(apVC, event.Data)
+		err = c.handleOrganizationMembershipUpdated(ctx, event.Data)
 	case "organizationMembership.deleted":
-		err = c.handleOrganizationMembershipDeleted(apVC, event.Data)
+		err = c.handleOrganizationMembershipDeleted(ctx, event.Data)
 	default:
 		return fmt.Errorf("Unhandled event type")
 	}
