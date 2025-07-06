@@ -150,32 +150,70 @@ func DenyIfUserMismatchedRule() privacy.MutationRule {
 }
 
 type OrgFilter interface {
+	Where(entql.P)
 	WhereOrganizationID(entql.StringP)
+}
+
+type IsPublicFilter interface {
+	WhereIsPublic(entql.BoolP)
 }
 
 func FilterByViewerOrgRule() privacy.QueryMutationRule {
 	return privacy.FilterFunc(func(ctx context.Context, f privacy.Filter) error {
-		tf, ok := f.(OrgFilter)
-		if !ok {
-			return privacy.Denyf("unexpected filter type %T", f)
-		}
-
 		vc := viewer.FromContext(ctx)
 		if vc.IsAries() {
 			return privacy.Skip
 		}
 
-		if vc.HasOrg() {
-			tf.WhereOrganizationID(entql.StringEQ(string(vc.OrgID)))
-		} else {
-			tf.WhereOrganizationID(entql.StringNil())
+		tfo, ok := f.(OrgFilter)
+		if !ok {
+			return privacy.Denyf("unexpected filter type %T", f)
 		}
+
+		stringFilter := entql.StringNil()
+		if vc.HasOrg() {
+			stringFilter = entql.StringEQ(string(vc.OrgID))
+		}
+		tfo.WhereOrganizationID(stringFilter)
+
 		return privacy.Skip
 	})
 }
 
-type ActorFilter interface {
-	WhereActorIDEQ(id pulid.ID)
+func FilterByViewerOrgOrPublicRule() privacy.QueryMutationRule {
+	return privacy.FilterFunc(func(ctx context.Context, f privacy.Filter) error {
+		vc := viewer.FromContext(ctx)
+		if vc.IsAries() {
+			return privacy.Skip
+		}
+
+		tfo, ok := f.(OrgFilter)
+		if !ok {
+			return privacy.Denyf("unexpected filter type %T", f)
+		}
+
+		stringFilter := entql.StringNil()
+		if vc.HasOrg() {
+			stringFilter = entql.StringEQ(string(vc.OrgID))
+		}
+
+		// This is not as safe as I'd like, but there's no way to combine the two standard filters with an OR
+		// condition, so we write it manually if we want to check both. We still use the interface to
+		// check if that filter would exist.
+		_, ok = f.(IsPublicFilter)
+		if !ok {
+			tfo.WhereOrganizationID(stringFilter)
+		} else {
+			tfo.Where(
+				entql.Or(
+					stringFilter.Field("organization_id"),
+					entql.BoolEQ(true).Field("is_public"),
+				),
+			)
+		}
+
+		return privacy.Skip
+	})
 }
 
 func FilterByViewerIsActorRule() privacy.QueryMutationRule {
