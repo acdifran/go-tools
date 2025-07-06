@@ -216,6 +216,10 @@ func FilterByViewerOrgOrPublicRule() privacy.QueryMutationRule {
 	})
 }
 
+type ActorFilter interface {
+	WhereActorIDEQ(id pulid.ID)
+}
+
 func FilterByViewerIsActorRule() privacy.QueryMutationRule {
 	return privacy.FilterFunc(func(ctx context.Context, f privacy.Filter) error {
 		tf, ok := f.(ActorFilter)
