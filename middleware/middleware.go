@@ -10,6 +10,7 @@ import (
 	"github.com/acdifran/go-tools/viewer"
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
+	"github.com/davecgh/go-spew/spew"
 
 	clerktools "github.com/acdifran/go-tools/clerk"
 )
@@ -56,6 +57,7 @@ func createAuthViewerContext(
 	vcOverrideID string,
 	vcOverrideOrgID string,
 ) *viewer.Context {
+	spew.Dump(claims)
 	customClaims := claims.Custom.(*CustomClaims)
 	if customClaims == nil {
 		slog.Error("missing custom claims", "subjet", claims.Subject)
@@ -88,7 +90,7 @@ func createAuthViewerContext(
 		role = viewer.Employee
 	}
 
-	if customClaims.PersonalOrgID != "" {
+	if orgID == "" && customClaims.PersonalOrgID != "" {
 		orgID = customClaims.PersonalOrgID
 		orgAccountID = claims.Subject
 		orgMembershipRole = membershiprole.Admin
