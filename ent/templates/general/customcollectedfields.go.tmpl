@@ -43,20 +43,54 @@
 									{{- if $a.IncludeWhere }}
 									q.{{$whereName}}(ctx)
 									{{- end }}
-									{{- if $a.OrderFieldName }}
-									order := &{{$e.Type.Name}}Order{Field: {{$e.Type.Name}}OrderField{{$a.OrderFieldName}}, Direction: "{{$a.OrderFieldDirection}}"}
-									pager := &{{lower $e.Type.Name}}Pager{order: order}
+
+									{{- if $a.MultiOrderBy }}
+									orders := []*{{$e.Type.Name}}Order{
+										{{- range $i, $ob := $a.MultiOrderBy }}
+										{
+											Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
+											Direction: "{{$ob.Direction}}",
+										},
+										{{- end }}
+									}
+									pager := &{{lower $e.Type.Name}}Pager{}
+									With{{$e.Type.Name}}Order(orders)(pager)
+									{{- else if $a.OrderBy }}
+									order := &{{$e.Type.Name}}Order{
+										Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
+										Direction: "{{$a.OrderBy.Direction}}",
+									}
+									pager := &{{lower $e.Type.Name}}Pager{}
+									With{{$e.Type.Name}}Order(order)(pager)
 									{{- end }}
+
 									if oneNode {
-										{{- if $a.OrderFieldName }}
+										{{- if $a.MultiOrderBy }}
+										orders := []*{{$e.Type.Name}}Order{
+											{{- range $ob := $a.MultiOrderBy }}
+											{
+												Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
+												Direction: "{{$ob.Direction}}",
+											},
+											{{- end }}
+										}
+										q.Order(lo.Map(orders, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
+											return o.Field.toTerm(o.Direction.OrderTermOption())
+										})...)
+										{{- else if $a.OrderBy }}
+										order := &{{$e.Type.Name}}Order{
+											Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
+											Direction: "{{$a.OrderBy.Direction}}",
+										}
 										q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
 										{{- end }}
+
 										q.Limit(1)
 									} else {
 										{{- if $e.Ref.Unique }}
-										modify := entgql.LimitPerRow({{lower $node.Name}}.{{pascal $e.Name}}Column, 1{{ if $a.OrderFieldName }}, pager.orderExpr(q){{ end }})
+										modify := entgql.LimitPerRow({{lower $node.Name}}.{{pascal $e.Name}}Column, 1{{ if or $a.OrderBy $a.MultiOrderBy }}, pager.orderExpr(q){{ end }})
 										{{- else }}
-										modify := entgql.LimitPerRow({{lower $node.Name}}.{{pascal $e.Name}}PrimaryKey[{{ if eq $e.Inverse "" }}0{{ else }}1{{ end }}], 1{{ if $a.OrderFieldName }}, pager.orderExpr(q){{ end }})
+										modify := entgql.LimitPerRow({{lower $node.Name}}.{{pascal $e.Name}}PrimaryKey[{{ if eq $e.Inverse "" }}0{{ else }}1{{ end }}], 1{{ if or $a.OrderBy $a.MultiOrderBy }}, pager.orderExpr(q){{ end }})
 										{{- end }}
 										q.modifiers = append(q.modifiers, modify)
 									}
@@ -72,10 +106,27 @@
 									{{- if $a.IncludeWhere }}
 									q.{{$whereName}}(ctx)
 									{{- end }}
-									{{- if $a.OrderFieldName }}
-									order := &{{$e.Type.Name}}Order{Field: {{$e.Type.Name}}OrderField{{$a.OrderFieldName}}, Direction: "{{$a.OrderFieldDirection}}"}
-									q = q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
+
+									{{- if $a.MultiOrderBy }}
+									orders := []*{{$e.Type.Name}}Order{
+										{{- range $ob := $a.MultiOrderBy }}
+										{
+											Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
+											Direction: "{{$ob.Direction}}",
+										},
+										{{- end }}
+									}
+									q.Order(lo.Map(orders, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
+										return o.Field.toTerm(o.Direction.OrderTermOption())
+									})...)
+									{{- else if $a.OrderBy }}
+									order := &{{$e.Type.Name}}Order{
+										Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
+										Direction: "{{$a.OrderBy.Direction}}",
+									}
+									q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
 									{{- end }}
+
 									return q.Exist(ctx)
 								} else if err != nil {
 									return false, err
@@ -92,20 +143,53 @@
 									{{- if $a.IncludeWhere }}
 									q.{{$whereName}}(ctx)
 									{{- end }}
-									{{- if $a.OrderFieldName }}
-									order := &{{$e.Type.Name}}Order{Field: {{$e.Type.Name}}OrderField{{$a.OrderFieldName}}, Direction: "{{$a.OrderFieldDirection}}"}
-									pager := &{{lower $e.Type.Name}}Pager{order: order}
+
+									{{- if $a.MultiOrderBy }}
+									orders := []*{{$e.Type.Name}}Order{
+										{{- range $i, $ob := $a.MultiOrderBy }}
+										{
+											Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
+											Direction: "{{$ob.Direction}}",
+										},
+										{{- end }}
+									}
+									pager := &{{lower $e.Type.Name}}Pager{}
+									With{{$e.Type.Name}}Order(orders)(pager)
+									{{- else if $a.OrderBy }}
+									order := &{{$e.Type.Name}}Order{
+										Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
+										Direction: "{{$a.OrderBy.Direction}}",
+									}
+									pager := &{{lower $e.Type.Name}}Pager{}
+									With{{$e.Type.Name}}Order(order)(pager)
 									{{- end }}
+
 									if oneNode {
-										{{- if $a.OrderFieldName }}
+										{{- if $a.MultiOrderBy }}
+										orders := []*{{$e.Type.Name}}Order{
+											{{- range $ob := $a.MultiOrderBy }}
+											{
+												Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
+												Direction: "{{$ob.Direction}}",
+											},
+											{{- end }}
+										}
+										q.Order(lo.Map(orders, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
+											return o.Field.toTerm(o.Direction.OrderTermOption())
+										})...)
+										{{- else if $a.OrderBy }}
+										order := &{{$e.Type.Name}}Order{
+											Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
+											Direction: "{{$a.OrderBy.Direction}}",
+										}
 										q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
 										{{- end }}
 										q.Limit(1)
 									} else {
 										{{- if $e.Ref.Unique }}
-										modify := entgql.LimitPerRow({{lower $node.Name}}.{{pascal $e.Name}}Column, 1{{ if $a.OrderFieldName }}, pager.orderExpr(q){{ end }})
+										modify := entgql.LimitPerRow({{lower $node.Name}}.{{pascal $e.Name}}Column, 1{{ if or $a.OrderBy $a.MultiOrderBy }}, pager.orderExpr(q){{ end }})
 										{{- else }}
-										modify := entgql.LimitPerRow({{lower $node.Name}}.{{pascal $e.Name}}PrimaryKey[{{ if eq $e.Inverse "" }}0{{ else }}1{{ end }}], 1{{ if $a.OrderFieldName }}, pager.orderExpr(q){{ end }})
+										modify := entgql.LimitPerRow({{lower $node.Name}}.{{pascal $e.Name}}PrimaryKey[{{ if eq $e.Inverse "" }}0{{ else }}1{{ end }}], 1{{ if or $a.OrderBy $a.MultiOrderBy }}, pager.orderExpr(q){{ end }})
 										{{- end }}
 										q.modifiers = append(q.modifiers, modify)
 									}
@@ -121,8 +205,23 @@
 									{{- if $a.IncludeWhere }}
 									q.{{$whereName}}(ctx)
 									{{- end }}
-									{{- if $a.OrderFieldName }}
-									order := &{{$e.Type.Name}}Order{Field: {{$e.Type.Name}}OrderField{{$a.OrderFieldName}}, Direction: "{{$a.OrderFieldDirection}}"}
+									{{- if $a.MultiOrderBy }}
+									orders := []*{{$e.Type.Name}}Order{
+										{{- range $ob := $a.MultiOrderBy }}
+										{
+											Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
+											Direction: "{{$ob.Direction}}",
+										},
+										{{- end }}
+									}
+									q.Order(lo.Map(orders, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
+										return o.Field.toTerm(o.Direction.OrderTermOption())
+									})...)
+									{{- else if $a.OrderBy }}
+									order := &{{$e.Type.Name}}Order{
+										Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
+										Direction: "{{$a.OrderBy.Direction}}",
+									}
 									q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
 									{{- end }}
 									return q.First(ctx)
@@ -143,8 +242,23 @@
 									{{- if $a.IncludeWhere }}
 									q.{{$whereName}}(ctx)
 									{{- end }}
-									{{- if $a.OrderFieldName }}
-									order := &{{$e.Type.Name}}Order{Field: {{$e.Type.Name}}OrderField{{$a.OrderFieldName}}, Direction: "{{$a.OrderFieldDirection}}"}
+									{{- if $a.MultiOrderBy }}
+									orders := []*{{$e.Type.Name}}Order{
+										{{- range $ob := $a.MultiOrderBy }}
+										{
+											Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
+											Direction: "{{$ob.Direction}}",
+										},
+										{{- end }}
+									}
+									q.Order(lo.Map(orders, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
+										return o.Field.toTerm(o.Direction.OrderTermOption())
+									})...)
+									{{- else if $a.OrderBy }}
+									order := &{{$e.Type.Name}}Order{
+										Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
+										Direction: "{{$a.OrderBy.Direction}}",
+									}
 									q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
 									{{- end }}
 								}
@@ -154,10 +268,22 @@
 
 							func ({{$node.Receiver}} *{{$node.Name}}) {{pascal $fieldname}}(
 								ctx context.Context, after *Cursor, first *int, before *Cursor, last *int,
-								{{- if not $a.OrderFieldName }} orderBy *{{$node.Name}}Order,{{ end }}
+								{{- if and (not ( $a.OrderBy )) (not ( $a.MultiOrderBy )) }} orderBy *{{$e.Type.Name}}Order,{{ end }}
 							) (*{{$e.Type.Name}}Connection, error) {
-								{{- if $a.OrderFieldName }}
-								orderBy := &{{$e.Type.Name}}Order{Field: {{$e.Type.Name}}OrderField{{$a.OrderFieldName}}, Direction: "{{$a.OrderFieldDirection}}"}
+								{{- if $a.MultiOrderBy }}
+								orderBy := []*{{$e.Type.Name}}Order{
+									{{- range $i, $ob := $a.MultiOrderBy }}
+									{
+										Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
+										Direction: "{{$ob.Direction}}",
+									},
+									{{- end }}
+								}
+								{{- else if $a.OrderBy }}
+								orderBy := &{{$e.Type.Name}}Order{
+									Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
+									Direction: "{{$a.OrderBy.Direction}}",
+								}
 								{{- end }}
 								opts := []{{$e.Type.Name}}PaginateOption{
 									With{{$e.Type.Name}}Order(orderBy),
@@ -188,8 +314,23 @@
 									{{- if $a.IncludeWhere }}
 									q.{{$whereName}}(ctx)
 									{{- end }}
-									{{- if $a.OrderFieldName }}
-									order := &{{$e.Type.Name}}Order{Field: {{$e.Type.Name}}OrderField{{$a.OrderFieldName}}, Direction: "{{$a.OrderFieldDirection}}"}
+									{{- if $a.MultiOrderBy }}
+									orders := []*{{$e.Type.Name}}Order{
+										{{- range $ob := $a.MultiOrderBy }}
+										{
+											Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
+											Direction: "{{$ob.Direction}}",
+										},
+										{{- end }}
+									}
+									q.Order(lo.Map(orders, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
+										return o.Field.toTerm(o.Direction.OrderTermOption())
+									})...)
+									{{- else if $a.OrderBy }}
+									order := &{{$e.Type.Name}}Order{
+										Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
+										Direction: "{{$a.OrderBy.Direction}}",
+									}
 									q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
 									{{- end }}
 								}
@@ -204,9 +345,24 @@
 									{{- if $a.IncludeWhere }}
 									q.{{$whereName}}(ctx)
 									{{- end }}
-									{{- if $a.OrderFieldName }}
-									order := &{{$e.Type.Name}}Order{Field: {{$e.Type.Name}}OrderField{{$a.OrderFieldName}}, Direction: "{{$a.OrderFieldDirection}}"}
-									q = q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
+									{{- if $a.MultiOrderBy }}
+									orders := []*{{$e.Type.Name}}Order{
+										{{- range $ob := $a.MultiOrderBy }}
+										{
+											Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
+											Direction: "{{$ob.Direction}}",
+										},
+										{{- end }}
+									}
+									q.Order(lo.Map(orders, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
+										return o.Field.toTerm(o.Direction.OrderTermOption())
+									})...)
+									{{- else if $a.OrderBy }}
+									order := &{{$e.Type.Name}}Order{
+										Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
+										Direction: "{{$a.OrderBy.Direction}}",
+									}
+									q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
 									{{- end }}
 									items, err = q.All(ctx)
 								} else if err != nil {
