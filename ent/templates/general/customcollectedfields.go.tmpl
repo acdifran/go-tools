@@ -45,7 +45,7 @@
 									{{- end }}
 
 									{{- if $a.MultiOrderBy }}
-									orders := []*{{$e.Type.Name}}Order{
+									order := []*{{$e.Type.Name}}Order{
 										{{- range $i, $ob := $a.MultiOrderBy }}
 										{
 											Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
@@ -53,40 +53,28 @@
 										},
 										{{- end }}
 									}
-									pager := &{{lower $e.Type.Name}}Pager{}
-									With{{$e.Type.Name}}Order(orders)(pager)
 									{{- else if $a.OrderBy }}
 									order := &{{$e.Type.Name}}Order{
 										Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
 										Direction: "{{$a.OrderBy.Direction}}",
 									}
-									pager := &{{lower $e.Type.Name}}Pager{}
-									With{{$e.Type.Name}}Order(order)(pager)
 									{{- end }}
 
 									if oneNode {
 										{{- if $a.MultiOrderBy }}
-										orders := []*{{$e.Type.Name}}Order{
-											{{- range $ob := $a.MultiOrderBy }}
-											{
-												Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
-												Direction: "{{$ob.Direction}}",
-											},
-											{{- end }}
-										}
-										q.Order(lo.Map(orders, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
+										q.Order(lo.Map(order, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
 											return o.Field.toTerm(o.Direction.OrderTermOption())
 										})...)
 										{{- else if $a.OrderBy }}
-										order := &{{$e.Type.Name}}Order{
-											Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
-											Direction: "{{$a.OrderBy.Direction}}",
-										}
 										q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
 										{{- end }}
 
 										q.Limit(1)
 									} else {
+										{{- if or $a.OrderBy $a.MultiOrderBy}}
+										pager := &{{lower $e.Type.Name}}Pager{}
+										With{{$e.Type.Name}}Order(order)(pager)
+										{{- end}}
 										{{- if $e.Ref.Unique }}
 										modify := entgql.LimitPerRow({{lower $node.Name}}.{{pascal $e.Name}}Column, 1{{ if or $a.OrderBy $a.MultiOrderBy }}, pager.orderExpr(q){{ end }})
 										{{- else }}
@@ -145,7 +133,7 @@
 									{{- end }}
 
 									{{- if $a.MultiOrderBy }}
-									orders := []*{{$e.Type.Name}}Order{
+									order := []*{{$e.Type.Name}}Order{
 										{{- range $i, $ob := $a.MultiOrderBy }}
 										{
 											Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
@@ -153,39 +141,27 @@
 										},
 										{{- end }}
 									}
-									pager := &{{lower $e.Type.Name}}Pager{}
-									With{{$e.Type.Name}}Order(orders)(pager)
 									{{- else if $a.OrderBy }}
 									order := &{{$e.Type.Name}}Order{
 										Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
 										Direction: "{{$a.OrderBy.Direction}}",
 									}
-									pager := &{{lower $e.Type.Name}}Pager{}
-									With{{$e.Type.Name}}Order(order)(pager)
 									{{- end }}
 
 									if oneNode {
 										{{- if $a.MultiOrderBy }}
-										orders := []*{{$e.Type.Name}}Order{
-											{{- range $ob := $a.MultiOrderBy }}
-											{
-												Field:     {{$e.Type.Name}}OrderField{{$ob.Field}},
-												Direction: "{{$ob.Direction}}",
-											},
-											{{- end }}
-										}
-										q.Order(lo.Map(orders, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
+										q.Order(lo.Map(order, func(o *{{$e.Type.Name}}Order, _ int) {{lower $e.Type.Name}}.OrderOption {
 											return o.Field.toTerm(o.Direction.OrderTermOption())
 										})...)
 										{{- else if $a.OrderBy }}
-										order := &{{$e.Type.Name}}Order{
-											Field:     {{$e.Type.Name}}OrderField{{$a.OrderBy.Field}},
-											Direction: "{{$a.OrderBy.Direction}}",
-										}
 										q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
 										{{- end }}
 										q.Limit(1)
 									} else {
+										{{- if or $a.OrderBy $a.MultiOrderBy}}
+										pager := &{{lower $e.Type.Name}}Pager{}
+										With{{$e.Type.Name}}Order(order)(pager)
+										{{- end}}
 										{{- if $e.Ref.Unique }}
 										modify := entgql.LimitPerRow({{lower $node.Name}}.{{pascal $e.Name}}Column, 1{{ if or $a.OrderBy $a.MultiOrderBy }}, pager.orderExpr(q){{ end }})
 										{{- else }}
