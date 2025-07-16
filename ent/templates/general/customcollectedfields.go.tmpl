@@ -200,7 +200,7 @@
 									}
 									q.Order(order.Field.toTerm(order.Direction.OrderTermOption()))
 									{{- end }}
-									return q.First(ctx)
+									return q.FirstOrNil(ctx)
 								} else if err != nil {
 									return nil, err
 								}
