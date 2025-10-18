@@ -5,14 +5,14 @@
 package {{ $pkg  }}
 
 type MaybeTx interface {
-	Tx() (*ent.Tx, error)
+	Tx() (*{{$.Annotations.EntName}}.Tx, error)
 }
 
 func RunOnCompletion(ctx context.Context, m MaybeTx, fn func()) {
 	if tx, err := m.Tx(); err == nil {
 		tx.OnCommit(
-			func(next ent.Committer) ent.Committer {
-				return ent.CommitFunc(func(ctx context.Context, tx *ent.Tx) error {
+			func(next {{$.Annotations.EntName}}.Committer) {{$.Annotations.EntName}}.Committer {
+				return {{$.Annotations.EntName}}.CommitFunc(func(ctx context.Context, tx *{{$.Annotations.EntName}}.Tx) error {
 					err := next.Commit(ctx, tx)
 					if err != nil {
 						slog.ErrorContext(ctx,

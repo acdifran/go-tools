@@ -14,10 +14,15 @@ var prefixMap = map[pulid.ID]string{
 
 // IDToType maps a pulid.ID to the underlying table.
 func IDToTable(ctx context.Context, id pulid.ID) (string, error) {
-	if len(id) < 2 {
+	{{- $count := 2}}
+	{{- $node := index $.Nodes 0 -}}
+	{{- with $sp := $node.Annotations.PULID.SchemaPrefix -}}
+  	{{- $count = 4 -}}
+	{{- end -}}
+	if len(id) < {{ $count }} {
 		return "", fmt.Errorf("IDToType: id too short")
 	}
-	prefix := id[:2]
+	prefix := id[:{{ $count }}]
 	typ := prefixMap[prefix]
 	if typ == "" {
 		return "", fmt.Errorf("IDToType: could not map prefix '%s' to a type", prefix)

@@ -16,10 +16,11 @@ import (
 	"github.com/acdifran/go-tools/ent/schema"
 )
 
-type NodeWithActions struct {
+type TemplateData struct {
 	Node     *gen.Type
 	Actions  []*schema.ActionDef
 	NumHooks int
+	EntName  string
 }
 
 func getActions(node *gen.Type, registry map[string]ent.Interface) ([]*schema.ActionDef, error) {
@@ -52,28 +53,30 @@ func BuildEntTemplates(
 	entTemplates []*gen.Template,
 	graph *gen.Graph,
 	registry map[string]ent.Interface,
+	entName string,
 ) {
 	for _, template := range entTemplates {
 		for _, node := range graph.Nodes {
 			actions, err := getActions(node, registry)
 			if err != nil {
-				log.Fatalf(fmt.Errorf("getting actions for %s: %w", node.Name, err).Error())
+				log.Fatalf("getting actions for %s: %v", node.Name, err)
 			}
-			nodeWithActions := &NodeWithActions{Node: node, Actions: actions}
+			data := &TemplateData{Node: node, Actions: actions, EntName: entName}
 
 			filename := filepath.Join(
-				"./internal/ent",
+				"./internal",
+				entName,
 				strings.ToLower(node.Name)+"_"+template.Name()+".go",
 			)
 			file, err := os.Create(filename)
 			if err != nil {
-				log.Fatalf(fmt.Errorf("creating file %s: %w", filename, err).Error())
+				log.Fatalf("creating file %s: %v", filename, err)
 			}
 			defer file.Close()
 
-			err = template.ExecuteTemplate(file, template.Name(), nodeWithActions)
+			err = template.ExecuteTemplate(file, template.Name(), data)
 			if err != nil {
-				log.Fatalf(fmt.Errorf("executing template for %s: %w", node.Name, err).Error())
+				log.Fatalf("executing template for %s: %v", node.Name, err)
 			}
 		}
 	}
