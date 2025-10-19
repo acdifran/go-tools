@@ -56,12 +56,12 @@ func AllowIfOrgAdmin() privacy.QueryMutationRule {
 
 type WithOrgMutation interface {
 	OrganizationID() (pulid.ID, bool)
-	ent.Mutation
+	{{$.Annotations.EntName}}.Mutation
 }
 
 func DenyIfOrgMismatchedRule() privacy.MutationRule {
 	return privacy.MutationRuleFunc(
-		func(ctx context.Context, m ent.Mutation) error {
+		func(ctx context.Context, m {{$.Annotations.EntName}}.Mutation) error {
 			tm, ok := m.(WithOrgMutation)
 			if !ok {
 				return privacy.Denyf("unexpected ent mutation type %T", m)
@@ -90,7 +90,7 @@ type MutationWithActor interface {
 
 func DenyIfActorMismatchedRule() privacy.MutationRule {
 	return privacy.MutationRuleFunc(
-		func(ctx context.Context, m ent.Mutation) error {
+		func(ctx context.Context, m {{$.Annotations.EntName}}.Mutation) error {
 			tm, ok := m.(MutationWithActor)
 			if !ok {
 				return privacy.Denyf(
@@ -123,7 +123,7 @@ type MutationWithUser interface {
 
 func DenyIfUserMismatchedRule() privacy.MutationRule {
 	return privacy.MutationRuleFunc(
-		func(ctx context.Context, m ent.Mutation) error {
+		func(ctx context.Context, m {{$.Annotations.EntName}}.Mutation) error {
 			tm, ok := m.(MutationWithUser)
 			if !ok {
 				return privacy.Denyf(

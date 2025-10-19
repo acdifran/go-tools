@@ -11,8 +11,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler/lru"
 )
 
-func BuildPersistedQueryCache() (graphql.Cache[string], error) {
-	filepath := "./persisted_queries.json"
+func BuildPersistedQueryCache(filepath string) (graphql.Cache[string], error) {
 	size, err := countLines(filepath)
 	if err != nil {
 		return nil, fmt.Errorf("getting size for cache: %w", err)
@@ -20,7 +19,7 @@ func BuildPersistedQueryCache() (graphql.Cache[string], error) {
 
 	cache := lru.New[string](size + 1000)
 
-	err = preloadCacheFromJSON(cache, "./persisted_queries.json")
+	err = preloadCacheFromJSON(cache, filepath)
 	if err != nil {
 		return nil, fmt.Errorf("preloading cache: %v", err)
 	}

@@ -4,9 +4,9 @@
 
 package {{ $pkg  }}
 
-func AddQueryPathContextInterceptor() ent.InterceptFunc {
-	return ent.InterceptFunc(func(next ent.Querier) ent.Querier {
-		return ent.QuerierFunc(func(ctx context.Context, query ent.Query) (ent.Value, error) {
+func AddQueryPathContextInterceptor() {{$.Annotations.EntName}}.InterceptFunc {
+	return {{$.Annotations.EntName}}.InterceptFunc(func(next {{$.Annotations.EntName}}.Querier) {{$.Annotations.EntName}}.Querier {
+		return {{$.Annotations.EntName}}.QuerierFunc(func(ctx context.Context, query {{$.Annotations.EntName}}.Query) ({{$.Annotations.EntName}}.Value, error) {
 			iq, err := intercept.NewQuery(query)
 			if err != nil {
 				return nil, fmt.Errorf("applying query path context in interceptor: %w", err)

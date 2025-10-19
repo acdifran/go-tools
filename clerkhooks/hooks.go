@@ -69,6 +69,7 @@ type AppClient interface {
 	DeleteMembership(ctx context.Context, orgID pulid.ID, userID pulid.ID) error
 	GetUser(ctx context.Context, userID pulid.ID) (*User, error)
 	GetUserByAccountID(ctx context.Context, accountID string) (*User, error)
+	GetOrgByAccountID(ctx context.Context, accountID string) (*Organization, error)
 	MembershipExists(ctx context.Context, orgID pulid.ID, userID pulid.ID) (bool, error)
 	SetOrgDetails(ctx context.Context, orgID pulid.ID, data *OrgInputData) error
 	SetUserProfileDetails(ctx context.Context, userID pulid.ID, data *UserInputData) error
@@ -118,6 +119,7 @@ type orgPublicMetadata struct {
 
 type membershipData struct {
 	Organization struct {
+		ID             string `json:"id"`
 		PublicMetadata struct {
 			OrgID string `json:"app_org_id"`
 		} `json:"public_metadata"`
@@ -138,6 +140,18 @@ func (c *ClerkHook) GetUserByAccountID(
 	}
 
 	return user, nil
+}
+
+func (c *ClerkHook) GetOrgByAccountID(
+	ctx context.Context,
+	accountID string,
+) (*Organization, error) {
+	org, err := c.appClient.GetOrgByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("org with accountID %v not found: %w", accountID, err)
+	}
+
+	return org, nil
 }
 
 func (c *ClerkHook) handleUserCreated(
@@ -259,7 +273,7 @@ func (c *ClerkHook) handleOrganizationCreated(ctx context.Context, data []byte) 
 	accountID := orgData.CreatedBy
 	user, err := c.appClient.GetUserByAccountID(ctx, accountID)
 	if err != nil {
-		return fmt.Errorf("user (accountID: %s) that created org not found: %w", accountID, err)
+		slog.Error("creating org", "error", err)
 	}
 
 	org, err := c.appClient.CreateOrganization(ctx, &CreateOrgData{
@@ -297,7 +311,7 @@ func (c *ClerkHook) handleOrganizationUpdated(ctx context.Context, data []byte) 
 		return fmt.Errorf("reading OrganizationData: %w", err)
 	}
 
-	err := c.appClient.SetOrgDetails(ctx, pulid.ID(orgData.CreatedBy), &OrgInputData{
+	err := c.appClient.SetOrgDetails(ctx, pulid.ID(orgData.PublicMetadata.OrgID), &OrgInputData{
 		Name:     orgData.Name,
 		ImageURL: orgData.ImageURL,
 	})
@@ -317,19 +331,23 @@ func (c *ClerkHook) handleOrganizationMembershipCreated(
 		return err
 	}
 
-	accountID := membershipData.PublicUserData.UserID
-	user, err := c.appClient.GetUserByAccountID(ctx, accountID)
+	userAccountID := membershipData.PublicUserData.UserID
+	user, err := c.appClient.GetUserByAccountID(ctx, userAccountID)
 	if err != nil {
-		return fmt.Errorf("user with accountID: %s not found: %w", accountID, err)
+		return fmt.Errorf("getting user by ID: %w", err)
 	}
 
-	orgID := pulid.ID(membershipData.Organization.PublicMetadata.OrgID)
+	orgAccountID := membershipData.Organization.ID
+	org, err := c.appClient.GetOrgByAccountID(ctx, orgAccountID)
+	if err != nil {
+		return fmt.Errorf("getting org by ID: %w", err)
+	}
 
 	// Check if membership already exists to avoid erroring in webhooks.
 	// When a new organization is created, it fires the organization.Created event and the
 	// organizationMembership.Created event, so the second hook fails when writing the
 	// membership due to it already existing from the org CreateWithAdmin call from the first hook.
-	exists, err := c.appClient.MembershipExists(ctx, orgID, user.ID)
+	exists, err := c.appClient.MembershipExists(ctx, org.ID, user.ID)
 	if err == nil && exists {
 		return nil
 	}
@@ -340,12 +358,12 @@ func (c *ClerkHook) handleOrganizationMembershipCreated(
 	}
 
 	err = c.appClient.CreateMembership(ctx, &CreateMembershipData{
-		OrgID:  orgID,
+		OrgID:  org.ID,
 		UserID: user.ID,
 		Role:   role,
 	})
 	if err != nil {
-		return fmt.Errorf("setting user %s as %s for org %s: %w", user.ID, role, orgID, err)
+		return fmt.Errorf("setting user %s as %s for org %s: %w", user.ID, role, org.ID, err)
 	}
 
 	return nil
@@ -473,7 +491,7 @@ func (c *ClerkHook) HandleHooks(
 	}
 
 	if err != nil {
-		ctx = logger.AppendCtx(ctx, slog.String("clerk_event", event.Type))
+		err = fmt.Errorf("handling %s event: %w", event.Type, err)
 	}
 
 	return err
