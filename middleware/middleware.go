@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"github.com/acdifran/go-tools/clerkhooks"
 	"log/slog"
 	"net/http"
 
@@ -58,12 +59,13 @@ func createAuthViewerContext(
 ) *viewer.Context {
 	customClaims := claims.Custom.(*CustomClaims)
 	if customClaims == nil {
-		slog.Error("missing custom claims", "subjet", claims.Subject)
+		slog.Error("missing custom claims", "subject", claims.Subject)
 		return viewer.LoggedOutContext()
 	}
 
 	if customClaims.UserID == "" {
-		slog.Error("missing user ID in claims", "subjet", claims.Subject)
+		slog.Error("missing user ID in claims", "subject", claims.Subject)
+
 		return viewer.LoggedOutContext()
 	}
 
@@ -113,6 +115,52 @@ func createAuthViewerContext(
 	return &user
 }
 
+func CreateMissingClerkUser(
+	loggedOutVC func(ctx context.Context) context.Context,
+	newContextFromBase func(ctx context.Context, base *viewer.Context) context.Context,
+	hook clerkhooks.ClerkHook,
+) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Upgrade") == "websocket" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			ctx := r.Context()
+
+			claims, ok := clerk.SessionClaimsFromContext(ctx)
+			if !ok || claims == nil {
+
+				next.ServeHTTP(w, r.WithContext(loggedOutVC(ctx)))
+				return
+			}
+
+			user, err := hook.GetOrCreateUserByAccountID(ctx, claims.Subject)
+
+			if err != nil {
+				slog.Error("Got error creating missing user", err.Error())
+				next.ServeHTTP(w, r.WithContext(loggedOutVC(ctx)))
+				return
+			}
+
+			r.Header.Set("Vc-Override-Id", string(user.ID))
+			if user.PersonalOrgID != nil {
+				r.Header.Set("Vc-Override-Org-Id", string(*user.PersonalOrgID))
+			}
+
+			con := &viewer.Context{
+				Role:      viewer.User,
+				ID:        user.ID,
+				OrgID:     *user.PersonalOrgID,
+				AccountID: claims.Subject,
+			}
+
+			next.ServeHTTP(w, r.WithContext(newContextFromBase(ctx, con)))
+		})
+	}
+}
+
 func AuthenticateWithClerk(
 	loggedOutVC func(ctx context.Context) context.Context,
 	newContextFromBase func(ctx context.Context, base *viewer.Context) context.Context,
@@ -128,12 +176,6 @@ func AuthenticateWithClerk(
 
 			claims, ok := clerk.SessionClaimsFromContext(ctx)
 			if !ok || claims == nil {
-				// slog.Warn(
-				// 	"request missing auth session claims",
-				// 	"Authorization", r.Header.Get("Authorization"),
-				// 	"URI", r.RequestURI,
-				// 	"RemmoteAddr", r.RemoteAddr,
-				// )
 
 				next.ServeHTTP(w, r.WithContext(loggedOutVC(ctx)))
 				return

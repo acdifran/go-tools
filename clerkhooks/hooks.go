@@ -71,6 +71,7 @@ type AppClient interface {
 	GetUserByAccountID(ctx context.Context, accountID string) (*User, error)
 	GetOrgByAccountID(ctx context.Context, accountID string) (*Organization, error)
 	MembershipExists(ctx context.Context, orgID pulid.ID, userID pulid.ID) (bool, error)
+	GetOrCreateUserByAccountID(ctx context.Context, accountID string) (*User, error)
 	SetOrgDetails(ctx context.Context, orgID pulid.ID, data *OrgInputData) error
 	SetUserProfileDetails(ctx context.Context, userID pulid.ID, data *UserInputData) error
 	UpdateMembership(
@@ -262,6 +263,30 @@ func (c *ClerkHook) handleUserUpdated(ctx context.Context, data []byte) error {
 	}
 
 	return nil
+}
+
+func (c *ClerkHook) GetOrCreateUserByAccountID(ctx context.Context, accountID string) (*User, error) {
+	user, err := c.appClient.GetUserByAccountID(ctx, accountID)
+
+	if err != nil {
+		return nil, fmt.Errorf("user (accountID: %s) that created org not found: %w", accountID, err)
+	}
+
+	if user != nil {
+		return user, nil
+	}
+
+	createdUser, err := c.appClient.CreateUser(ctx, &CreateUserData{
+		AccountID:               accountID,
+		IsEmployee:              true,
+		ShouldCreatePersonalOrg: true,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("user (accountID: %s) that created org not found: %w", accountID, err)
+	}
+
+	return createdUser, nil
 }
 
 func (c *ClerkHook) handleOrganizationCreated(ctx context.Context, data []byte) error {
