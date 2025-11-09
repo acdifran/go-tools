@@ -71,7 +71,6 @@ type AppClient interface {
 	GetUserByAccountID(ctx context.Context, accountID string) (*User, error)
 	GetOrgByAccountID(ctx context.Context, accountID string) (*Organization, error)
 	MembershipExists(ctx context.Context, orgID pulid.ID, userID pulid.ID) (bool, error)
-	GetOrCreateUserByAccountID(ctx context.Context, accountID string) (*User, error)
 	SetOrgDetails(ctx context.Context, orgID pulid.ID, data *OrgInputData) error
 	SetUserProfileDetails(ctx context.Context, userID pulid.ID, data *UserInputData) error
 	UpdateMembership(
