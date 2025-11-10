@@ -264,7 +264,11 @@ func (c *ClerkHook) handleUserUpdated(ctx context.Context, data []byte) error {
 	return nil
 }
 
-func (c *ClerkHook) GetOrCreateUserByAccountID(ctx context.Context, accountID string) (*User, error) {
+func (c *ClerkHook) GetOrCreateUserByAccountID(
+	ctx context.Context,
+	accountID string,
+	shouldCreatePersonalOrg bool,
+) (*User, error) {
 	user, err := c.appClient.GetUserByAccountID(ctx, accountID)
 
 	if err != nil {
@@ -278,7 +282,7 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(ctx context.Context, accountID st
 	createdUser, err := c.appClient.CreateUser(ctx, &CreateUserData{
 		AccountID:               accountID,
 		IsEmployee:              true,
-		ShouldCreatePersonalOrg: true,
+		ShouldCreatePersonalOrg: shouldCreatePersonalOrg,
 	})
 
 	if err != nil {
