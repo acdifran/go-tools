@@ -119,6 +119,7 @@ func CreateMissingClerkUser(
 	loggedOutVC func(ctx context.Context) context.Context,
 	newContextFromBase func(ctx context.Context, base *viewer.Context) context.Context,
 	hook clerkhooks.ClerkHook,
+	shouldCreatePersonalOrg bool,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +137,8 @@ func CreateMissingClerkUser(
 				return
 			}
 
-			user, err := hook.GetOrCreateUserByAccountID(ctx, claims.Subject)
+			customClaims := claims.Custom.(*CustomClaims)
+			user, err := hook.GetOrCreateUserByAccountID(ctx, claims.Subject, customClaims.UserID, customClaims.OrgID, shouldCreatePersonalOrg)
 
 			if err != nil {
 				slog.Error("Got error creating missing user", err.Error())

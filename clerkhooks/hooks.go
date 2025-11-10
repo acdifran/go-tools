@@ -45,6 +45,8 @@ type OrgInputData struct {
 
 type CreateUserData struct {
 	AccountID               string
+	UserID                  string
+	OrgID                   string
 	IsEmployee              bool
 	ShouldCreatePersonalOrg bool
 	UserInputData
@@ -267,6 +269,8 @@ func (c *ClerkHook) handleUserUpdated(ctx context.Context, data []byte) error {
 func (c *ClerkHook) GetOrCreateUserByAccountID(
 	ctx context.Context,
 	accountID string,
+	userID string,
+	orgID string,
 	shouldCreatePersonalOrg bool,
 ) (*User, error) {
 	user, err := c.appClient.GetUserByAccountID(ctx, accountID)
@@ -281,6 +285,8 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 
 	createdUser, err := c.appClient.CreateUser(ctx, &CreateUserData{
 		AccountID:               accountID,
+		OrgID:                   orgID,
+		UserID:                  userID,
 		IsEmployee:              true,
 		ShouldCreatePersonalOrg: shouldCreatePersonalOrg,
 	})
