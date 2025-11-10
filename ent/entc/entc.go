@@ -83,53 +83,64 @@ func BuildEntTemplates(
 }
 
 func LoadTemplates(
-	internalPath string,
-	dir string,
-	embeddedFS embed.FS,
 	funcMap template.FuncMap,
+	paths ...string,
 ) ([]*gen.Template, error) {
 	var templates []*gen.Template
-	path := internalPath + "/" + dir
 
-	if _, err := os.Stat(path); err == nil {
-		files, err := os.ReadDir(path)
-		if err != nil {
-			return nil, err
-		}
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			files, err := os.ReadDir(path)
+			if err != nil {
+				return nil, err
+			}
 
-		for _, file := range files {
-			if filepath.Ext(file.Name()) == ".tmpl" {
-				template, err := gen.NewTemplate(strings.TrimSuffix(file.Name(), ".go.tmpl")).
-					Funcs(funcMap).
-					ParseFiles(filepath.Join(path, file.Name()))
-				if err != nil {
-					log.Printf("error parsing template %s: %v", file.Name(), err)
-					continue
+			for _, file := range files {
+				if filepath.Ext(file.Name()) == ".tmpl" {
+					template, err := gen.NewTemplate(strings.TrimSuffix(file.Name(), ".go.tmpl")).
+						Funcs(funcMap).
+						ParseFiles(filepath.Join(path, file.Name()))
+					if err != nil {
+						log.Printf("error parsing template %s: %v", file.Name(), err)
+						continue
+					}
+					templates = append(templates, template)
 				}
-				templates = append(templates, template)
 			}
 		}
 	}
 
-	files, err := fs.ReadDir(embeddedFS, dir)
-	if err != nil {
-		log.Printf("error reading embedded templates: %v", err)
-	} else {
-		for _, file := range files {
-			if filepath.Ext(file.Name()) == ".tmpl" {
-				data, err := fs.ReadFile(embeddedFS, dir+"/"+file.Name())
-				if err != nil {
-					log.Printf("error reading embedded template %s: %v", file.Name(), err)
-					continue
+	return templates, nil
+}
+
+func LoadEmbededTemplates(
+	funcMap template.FuncMap,
+	embeddedFS embed.FS,
+	paths ...string,
+) ([]*gen.Template, error) {
+	var templates []*gen.Template
+
+	for _, path := range paths {
+		files, err := fs.ReadDir(embeddedFS, path)
+		if err != nil {
+			log.Printf("error reading embedded templates: %v", err)
+		} else {
+			for _, file := range files {
+				if filepath.Ext(file.Name()) == ".tmpl" {
+					data, err := fs.ReadFile(embeddedFS, path+"/"+file.Name())
+					if err != nil {
+						log.Printf("error reading embedded template %s: %v", file.Name(), err)
+						continue
+					}
+					template, err := gen.NewTemplate(strings.TrimSuffix(file.Name(), ".go.tmpl")).
+						Funcs(funcMap).
+						Parse(string(data))
+					if err != nil {
+						log.Printf("error parsing embedded template %s: %v", file.Name(), err)
+						continue
+					}
+					templates = append(templates, template)
 				}
-				template, err := gen.NewTemplate(strings.TrimSuffix(file.Name(), ".go.tmpl")).
-					Funcs(funcMap).
-					Parse(string(data))
-				if err != nil {
-					log.Printf("error parsing embedded template %s: %v", file.Name(), err)
-					continue
-				}
-				templates = append(templates, template)
 			}
 		}
 	}
