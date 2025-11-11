@@ -38,10 +38,6 @@ type WithActor interface {
 			return nil, fmt.Errorf("Unknown type of Actor %s", actorType)
 		}
 
-		func ({{ $node.Receiver }} *{{ $node.Name }}) GetActorType() actortype.ActorType {
-			return {{ $node.Receiver }}.ActorType
-		}
-
 		func ({{ $node.Receiver }} *{{ $node.Name }}) FromAgent() bool {
 			return {{ $node.Receiver }}.ActorType == actortype.Agent
 		}

@@ -1,0 +1,22 @@
+{{ define "model/additional/getters" }}
+	{{- $recv := .Receiver }}
+	{{- $name := .Name }}
+
+	{{- /* GetID if this type has an ID field */}}
+	{{- if .ID }}
+		// GetID returns the ID field.
+		func ({{ $recv }} *{{ $name }}) GetID() {{ if .ID.Nillable }}*{{ end }}{{ .ID.Type }} {
+			return {{ $recv }}.ID
+		}
+	{{- end }}
+
+	{{- /* Getters for all non-edge fields */}}
+	{{- range $f := .Fields }}
+		{{- if not $f.IsEdgeField }}
+			// Get{{ pascal $f.Name }} returns the {{ $f.Name }} field.
+			func ({{ $recv }} *{{ $name }}) Get{{ pascal $f.Name }}() {{ if $f.Nillable }}*{{ end }}{{ $f.Type }} {
+				return {{ $recv }}.{{ $f.StructField }}
+			}
+		{{- end }}
+	{{- end }}
+{{ end }}
