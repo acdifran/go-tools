@@ -25,7 +25,9 @@ func (c *ClerkClient) GetAccountInfoForViewer(
 		}
 
 		name = fmt.Sprintf("%v %v", user.FirstName, user.LastName)
-		email = user.EmailAddresses[0].EmailAddress
+		if len(user.EmailAddresses) > 0 {
+			email = user.EmailAddresses[0].EmailAddress
+		}
 	} else {
 		org, err := c.OrganizationClient.Get(ctx, vc.OrgAccountID)
 		if err != nil {
