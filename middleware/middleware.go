@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/acdifran/go-tools/clerkhooks"
+	"github.com/samber/lo"
 
 	"github.com/acdifran/go-tools/membershiprole"
 	"github.com/acdifran/go-tools/pulid"
@@ -59,15 +60,14 @@ func createAuthViewerContext(
 	vcOverrideID string,
 	vcOverrideOrgID string,
 ) *viewer.Context {
-	customClaims := claims.Custom.(*CustomClaims)
-	if customClaims == nil {
+	customClaims, ok := claims.Custom.(*CustomClaims)
+	if !ok {
 		slog.Error("missing custom claims", "subject", claims.Subject)
 		return viewer.LoggedOutContext()
 	}
 
 	if customClaims.UserID == "" {
 		slog.Error("missing user ID in claims", "subject", claims.Subject)
-
 		return viewer.LoggedOutContext()
 	}
 
@@ -82,15 +82,18 @@ func createAuthViewerContext(
 			claims.ActiveOrganizationRole,
 		)
 		if err != nil {
-			slog.Error(err.Error())
+			slog.Error(
+				"invalid organization role in claims",
+				"role",
+				claims.ActiveOrganizationRole,
+				"error",
+				err,
+			)
 			return viewer.LoggedOutContext()
 		}
 	}
 
-	role := viewer.User
-	if customClaims.Role == "EMPLOYEE" {
-		role = viewer.Employee
-	}
+	role := lo.Ternary(customClaims.Role == "EMPLOYEE", viewer.Employee, viewer.User)
 
 	if orgID == "" && customClaims.PersonalOrgID != "" {
 		orgID = customClaims.PersonalOrgID
@@ -126,19 +129,13 @@ func getOrCreateUserAndWriteCustomClaims(
 	hook *clerkhooks.ClerkHook,
 	claims *clerk.SessionClaims,
 ) (*clerk.SessionClaims, error) {
-	fmt.Println("getOrCreateUserAndWriteCustomClaims called")
-	customClaims := claims.Custom.(*CustomClaims)
-	var userID, personalOrgID *pulid.ID
-	if customClaims != nil {
-		if customClaims.UserID != "" {
-			uid := pulid.ID(customClaims.UserID)
-			userID = &uid
-		}
-		if customClaims.PersonalOrgID != "" {
-			poid := pulid.ID(customClaims.PersonalOrgID)
-			personalOrgID = &poid
-		}
+	customClaims, ok := claims.Custom.(*CustomClaims)
+	if !ok {
+		return nil, fmt.Errorf("missing custom claims for subject: %s", claims.Subject)
 	}
+
+	userID := pulid.Ptr(customClaims.UserID)
+	personalOrgID := pulid.Ptr(customClaims.PersonalOrgID)
 
 	user, err := hook.GetOrCreateUserByAccountID(
 		ctx,
@@ -154,11 +151,7 @@ func getOrCreateUserAndWriteCustomClaims(
 	orgAccountID := claims.ActiveOrganizationID
 	// not a personal org
 	if orgAccountID != "" {
-		var orgID *pulid.ID
-		if customClaims != nil && customClaims.OrgID != "" {
-			oid := pulid.ID(customClaims.OrgID)
-			orgID = &oid
-		}
+		orgID := pulid.Ptr(customClaims.OrgID)
 
 		org, err := hook.GetOrCreateOrgByAccountID(ctx, orgAccountID, user.ID, orgID)
 		if err != nil {

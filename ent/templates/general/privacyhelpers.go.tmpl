@@ -9,7 +9,7 @@ func allowIfThroughQuery(ctx context.Context, queryType string) error {
 	if queryPathCtx == nil {
 		return privacy.Skipf("no query path")
 	}
-	lastQuery, ok := utils.Last(queryPathCtx.Path)
+	lastQuery, ok := lo.Last(queryPathCtx.Path)
 	if !ok {
 		return privacy.Skipf("no query path")
 	}

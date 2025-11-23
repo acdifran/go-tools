@@ -10,13 +10,12 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.54.0
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/clerk/clerk-sdk-go/v2 v2.0.3
-	github.com/davecgh/go-spew v1.1.1
 	github.com/fatih/color v1.16.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/joho/godotenv v1.5.1
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/oliveroneill/exponent-server-sdk-golang v0.0.0-20210823140141-d050598be512
-	github.com/samber/lo v1.39.0
+	github.com/samber/lo v1.52.0
 	github.com/stripe/stripe-go/v78 v78.8.0
 	github.com/svix/svix-webhooks v1.61.4
 	github.com/vektah/gqlparser/v2 v2.5.23
@@ -59,7 +58,6 @@ require (
 	github.com/zclconf/go-cty v1.14.4 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
-	golang.org/x/exp v0.0.0-20221230185412-738e83a70c30 // indirect
 	golang.org/x/mod v0.23.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect

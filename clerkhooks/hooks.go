@@ -7,10 +7,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/acdifran/go-tools/logger"
 	"github.com/acdifran/go-tools/membershiprole"
 	"github.com/acdifran/go-tools/pulid"
+	"github.com/samber/lo"
 
 	clerkorg "github.com/clerk/clerk-sdk-go/v2/organization"
 	clerkuser "github.com/clerk/clerk-sdk-go/v2/user"
@@ -147,6 +150,11 @@ func (c *ClerkHook) GetUserByAccountID(
 	return user, nil
 }
 
+func (c *ClerkHook) isEmployeeEmail(email string) bool {
+	return slices.Contains(c.employeeEmailConfig.emails, email) ||
+		strings.HasSuffix(email, fmt.Sprintf("@%s", c.employeeEmailConfig.domain))
+}
+
 func (c *ClerkHook) handleUserCreated(
 	ctx context.Context,
 	data []byte,
@@ -159,21 +167,14 @@ func (c *ClerkHook) handleUserCreated(
 
 	isEmployee := false
 	for _, email := range userData.EmailAddresses {
-		// if strings.HasSuffix(email.EmailAddress, "@mydomain.com") {
-		if email.EmailAddress == "acdifran@gmail.com" {
+		if c.isEmployeeEmail(email.EmailAddress) {
 			isEmployee = true
 			break
 		}
 	}
 
-	var emailAddress, phone *string
-
-	if len(userData.EmailAddresses) > 0 {
-		emailAddress = &userData.EmailAddresses[0].EmailAddress
-	}
-	if len(userData.PhoneNumbers) > 0 {
-		phone = &userData.PhoneNumbers[0].PhoneNumber
-	}
+	emailAddress := lo.EmptyableToPtr(lo.FirstOrEmpty(userData.EmailAddresses).EmailAddress)
+	phone := lo.EmptyableToPtr(lo.FirstOrEmpty(userData.PhoneNumbers).PhoneNumber)
 
 	user, err := c.appClient.CreateUser(ctx, &CreateUserData{
 		AccountID:  userData.ID,
@@ -194,10 +195,7 @@ func (c *ClerkHook) handleUserCreated(
 	}
 
 	userID := string(user.ID)
-	role := "USER"
-	if isEmployee {
-		role = "EMPLOYEE"
-	}
+	role := lo.Ternary(isEmployee, "EMPLOYEE", "USER")
 
 	publicMetadata := &userPublicMetadata{UserID: userID, Role: role, PersonalOrgID: ""}
 	if shouldCreatePersonalOrg {
@@ -235,14 +233,8 @@ func (c *ClerkHook) handleUserUpdated(ctx context.Context, data []byte) error {
 		return fmt.Errorf("getting User to update: %w", err)
 	}
 
-	var emailAddress, phone *string
-
-	if len(userData.EmailAddresses) > 0 {
-		emailAddress = &userData.EmailAddresses[0].EmailAddress
-	}
-	if len(userData.PhoneNumbers) > 0 {
-		phone = &userData.PhoneNumbers[0].PhoneNumber
-	}
+	emailAddress := lo.EmptyableToPtr(lo.FirstOrEmpty(userData.EmailAddresses).EmailAddress)
+	phone := lo.EmptyableToPtr(lo.FirstOrEmpty(userData.PhoneNumbers).PhoneNumber)
 
 	err = c.appClient.SetUserProfileDetails(ctx, user.ID, &UserInputData{
 		FirstName:    userData.FirstName,
@@ -288,13 +280,8 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 		)
 	}
 
-	var emailAddress, phone *string
-	if len(clerkUser.EmailAddresses) > 0 {
-		emailAddress = &clerkUser.EmailAddresses[0].EmailAddress
-	}
-	if len(clerkUser.PhoneNumbers) > 0 {
-		phone = &clerkUser.PhoneNumbers[0].PhoneNumber
-	}
+	emailAddress := lo.EmptyableToPtr(lo.FirstOrEmpty(clerkUser.EmailAddresses).EmailAddress)
+	phone := lo.EmptyableToPtr(lo.FirstOrEmpty(clerkUser.PhoneNumbers).PhoneNumber)
 
 	createdUser, err := c.appClient.CreateUser(ctx, &CreateUserData{
 		AccountID: accountID,
@@ -587,30 +574,12 @@ func (c *ClerkHook) handleOrganizationMembershipDeleted(
 	return nil
 }
 
-type clerkHookOptions struct {
-	shouldCreatePersonalOrg bool
-}
-
-type ClerkHookOption func(*clerkHookOptions)
-
-func WithPersonalOrgs(shouldCreatePersonalOrg bool) ClerkHookOption {
-	return func(opts *clerkHookOptions) {
-		opts.shouldCreatePersonalOrg = shouldCreatePersonalOrg
-	}
-}
-
 func (c *ClerkHook) HandleHooks(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
-	opts ...ClerkHookOption,
 ) error {
 	ctx = logger.AppendCtx(ctx, slog.String("webhook", "clerk"))
-
-	clerkOpts := &clerkHookOptions{shouldCreatePersonalOrg: false}
-	for _, opt := range opts {
-		opt(clerkOpts)
-	}
 
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -630,7 +599,7 @@ func (c *ClerkHook) HandleHooks(
 
 	switch event.Type {
 	case "user.created":
-		err = c.handleUserCreated(ctx, event.Data, clerkOpts.shouldCreatePersonalOrg)
+		err = c.handleUserCreated(ctx, event.Data, c.shouldCreatePersonalOrg)
 	case "user.updated":
 		err = c.handleUserUpdated(ctx, event.Data)
 	case "organization.created":
