@@ -314,29 +314,33 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 		return nil, fmt.Errorf("creating user: %w", err)
 	}
 
-	createdUserIDStr := string(createdUser.ID)
-	personalOrgIDstr := ""
-	if personalOrgID != nil {
-		personalOrgIDstr = string(*personalOrgID)
-	}
-	publicMetadata := &userPublicMetadata{
-		UserID:        createdUserIDStr,
-		Role:          "EMPLOYEE",
-		PersonalOrgID: personalOrgIDstr,
-	}
+	publicMetadata := &userPublicMetadata{}
+	err = json.Unmarshal(clerkUser.PublicMetadata, publicMetadata)
+	if err != nil && publicMetadata.UserID == "" {
+		createdUserIDStr := string(createdUser.ID)
+		personalOrgIDstr := ""
+		if personalOrgID != nil {
+			personalOrgIDstr = string(*personalOrgID)
+		}
+		publicMetadata := &userPublicMetadata{
+			UserID:        createdUserIDStr,
+			Role:          "EMPLOYEE",
+			PersonalOrgID: personalOrgIDstr,
+		}
 
-	publicMetadataJSON, err := json.Marshal(publicMetadata)
-	if err != nil {
-		slog.Error("error writing UserPublicMetadata", "err", err)
-	}
+		publicMetadataJSON, err := json.Marshal(publicMetadata)
+		if err != nil {
+			slog.Error("error writing UserPublicMetadata", "err", err)
+		}
 
-	rawMessage := json.RawMessage(publicMetadataJSON)
-	_, err = clerkuser.Update(ctx, accountID, &clerkuser.UpdateParams{
-		ExternalID:     &createdUserIDStr,
-		PublicMetadata: &rawMessage,
-	})
-	if err != nil {
-		slog.Error("error updating clerk user", "err", err)
+		rawMessage := json.RawMessage(publicMetadataJSON)
+		_, err = clerkuser.Update(ctx, accountID, &clerkuser.UpdateParams{
+			ExternalID:     &createdUserIDStr,
+			PublicMetadata: &rawMessage,
+		})
+		if err != nil {
+			slog.Error("error updating clerk user", "err", err)
+		}
 	}
 
 	return createdUser, nil
@@ -383,22 +387,26 @@ func (c *ClerkHook) GetOrCreateOrgByAccountID(
 		return nil, fmt.Errorf("creating org: %w", err)
 	}
 
-	createdOrgIDStr := string(createdOrg.ID)
-	publicMetadata := &orgPublicMetadata{
-		OrgID: createdOrgIDStr,
-	}
+	publicMetadata := &orgPublicMetadata{}
+	err = json.Unmarshal(clerkOrg.PublicMetadata, publicMetadata)
+	if err != nil && publicMetadata.OrgID == "" {
+		createdOrgIDStr := string(createdOrg.ID)
+		publicMetadata := &orgPublicMetadata{
+			OrgID: createdOrgIDStr,
+		}
 
-	publicMetadataJSON, err := json.Marshal(publicMetadata)
-	if err != nil {
-		slog.Error("error writing OrgPublicMetadata", "err", err)
-	}
+		publicMetadataJSON, err := json.Marshal(publicMetadata)
+		if err != nil {
+			slog.Error("error writing OrgPublicMetadata", "err", err)
+		}
 
-	rawMessage := json.RawMessage(publicMetadataJSON)
-	_, err = clerkorg.Update(ctx, accountID, &clerkorg.UpdateParams{
-		PublicMetadata: &rawMessage,
-	})
-	if err != nil {
-		slog.Error("error updating clerk org", "err", err)
+		rawMessage := json.RawMessage(publicMetadataJSON)
+		_, err = clerkorg.Update(ctx, accountID, &clerkorg.UpdateParams{
+			PublicMetadata: &rawMessage,
+		})
+		if err != nil {
+			slog.Error("error updating clerk org", "err", err)
+		}
 	}
 
 	return createdOrg, nil
