@@ -2,8 +2,11 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+
+	"github.com/acdifran/go-tools/clerkhooks"
 
 	"github.com/acdifran/go-tools/membershiprole"
 	"github.com/acdifran/go-tools/pulid"
@@ -58,12 +61,13 @@ func createAuthViewerContext(
 ) *viewer.Context {
 	customClaims := claims.Custom.(*CustomClaims)
 	if customClaims == nil {
-		slog.Error("missing custom claims", "subjet", claims.Subject)
+		slog.Error("missing custom claims", "subject", claims.Subject)
 		return viewer.LoggedOutContext()
 	}
 
 	if customClaims.UserID == "" {
-		slog.Error("missing user ID in claims", "subjet", claims.Subject)
+		slog.Error("missing user ID in claims", "subject", claims.Subject)
+
 		return viewer.LoggedOutContext()
 	}
 
@@ -73,9 +77,9 @@ func createAuthViewerContext(
 	var orgAccountID string
 	var err error
 	if orgID != "" {
-		orgAccountID = claims.Claims.ActiveOrganizationID
+		orgAccountID = claims.ActiveOrganizationID
 		orgMembershipRole, err = clerktools.ClerkRoleToMembershipRole(
-			claims.Claims.ActiveOrganizationRole,
+			claims.ActiveOrganizationRole,
 		)
 		if err != nil {
 			slog.Error(err.Error())
@@ -105,12 +109,120 @@ func createAuthViewerContext(
 
 	if user.Role == viewer.Employee && vcOverrideID != "" {
 		user = viewer.Context{
-			ID:    pulid.ID(vcOverrideID),
-			OrgID: pulid.ID(vcOverrideOrgID),
+			ID:                pulid.ID(vcOverrideID),
+			OrgID:             pulid.ID(vcOverrideOrgID),
+			AccountID:         "",
+			OrgAccountID:      "",
+			OrgMembershipRole: membershiprole.Admin,
+			Role:              viewer.Employee,
 		}
 	}
 
 	return &user
+}
+
+func getOrCreateUserAndWriteCustomClaims(
+	ctx context.Context,
+	hook *clerkhooks.ClerkHook,
+	claims *clerk.SessionClaims,
+) (*clerk.SessionClaims, error) {
+	fmt.Println("getOrCreateUserAndWriteCustomClaims called")
+	customClaims := claims.Custom.(*CustomClaims)
+	var userID, personalOrgID *pulid.ID
+	if customClaims != nil {
+		if customClaims.UserID != "" {
+			uid := pulid.ID(customClaims.UserID)
+			userID = &uid
+		}
+		if customClaims.PersonalOrgID != "" {
+			poid := pulid.ID(customClaims.PersonalOrgID)
+			personalOrgID = &poid
+		}
+	}
+
+	user, err := hook.GetOrCreateUserByAccountID(
+		ctx,
+		claims.Subject,
+		userID,
+		personalOrgID,
+		true,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating or fetching user: %w", err)
+	}
+
+	orgAccountID := claims.ActiveOrganizationID
+	// not a personal org
+	if orgAccountID != "" {
+		var orgID *pulid.ID
+		if customClaims != nil && customClaims.OrgID != "" {
+			oid := pulid.ID(customClaims.OrgID)
+			orgID = &oid
+		}
+
+		org, err := hook.GetOrCreateOrgByAccountID(ctx, orgAccountID, user.ID, orgID)
+		if err != nil {
+			return nil, fmt.Errorf("creating or fetching org: %w", err)
+		}
+
+		customClaims = &CustomClaims{
+			UserID:        string(user.ID),
+			Role:          "EMPLOYEE",
+			OrgID:         string(org.ID),
+			PersonalOrgID: "",
+		}
+
+		claims.Custom = customClaims
+		return claims, nil
+	}
+
+	// is a personal org
+	orgAccountID = claims.Subject
+	org, err := hook.GetPersonalOrgByAccountID(ctx, orgAccountID, user, personalOrgID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching personal org: %w", err)
+	}
+
+	customClaims = &CustomClaims{
+		UserID:        string(user.ID),
+		Role:          "EMPLOYEE",
+		OrgID:         "",
+		PersonalOrgID: string(org.ID),
+	}
+	claims.Custom = customClaims
+	return claims, nil
+}
+
+func WriteClerkSessionClaimsFromLocalDB(
+	hook *clerkhooks.ClerkHook,
+) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			claims, ok := clerk.SessionClaimsFromContext(ctx)
+			if !ok || claims == nil {
+				fmt.Println("No claims found in context")
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			apCtx := viewer.AllPowerfulVC(ctx)
+			var err error
+			claims, err = getOrCreateUserAndWriteCustomClaims(
+				apCtx,
+				hook,
+				claims,
+			)
+			if err != nil {
+				slog.Error("error in WriteClerkSessionClaimsFromLocalDB", "error", err)
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			newCtx := clerk.ContextWithSessionClaims(r.Context(), claims)
+			next.ServeHTTP(w, r.WithContext(newCtx))
+		})
+	}
 }
 
 func AuthenticateWithClerk(
@@ -128,13 +240,6 @@ func AuthenticateWithClerk(
 
 			claims, ok := clerk.SessionClaimsFromContext(ctx)
 			if !ok || claims == nil {
-				// slog.Warn(
-				// 	"request missing auth session claims",
-				// 	"Authorization", r.Header.Get("Authorization"),
-				// 	"URI", r.RequestURI,
-				// 	"RemmoteAddr", r.RemoteAddr,
-				// )
-
 				next.ServeHTTP(w, r.WithContext(loggedOutVC(ctx)))
 				return
 			}
@@ -155,7 +260,7 @@ func AuthenticateWithClerk(
 
 func WithCustomClaims() clerkhttp.AuthorizationOption {
 	return func(params *clerkhttp.AuthorizationParams) error {
-		params.VerifyParams.CustomClaimsConstructor = func(ctx context.Context) any {
+		params.CustomClaimsConstructor = func(ctx context.Context) any {
 			return &CustomClaims{}
 		}
 		return nil
@@ -202,8 +307,12 @@ func SetManualViewer(
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			authContext := &viewer.Context{
-				ID:    pulid.ID(r.Header.Get("Vc-Override-Id")),
-				OrgID: pulid.ID(r.Header.Get("Vc-Override-Org-Id")),
+				ID:                pulid.ID(r.Header.Get("Vc-Override-Id")),
+				OrgID:             pulid.ID(r.Header.Get("Vc-Override-Org-Id")),
+				AccountID:         "",
+				OrgAccountID:      "",
+				OrgMembershipRole: membershiprole.Admin,
+				Role:              viewer.Employee,
 			}
 			next.ServeHTTP(
 				w,

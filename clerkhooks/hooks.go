@@ -23,6 +23,7 @@ type App interface {
 type User struct {
 	ID            pulid.ID
 	PersonalOrgID *pulid.ID
+	ImageURL      *string
 }
 
 type Organization struct {
@@ -30,28 +31,30 @@ type Organization struct {
 }
 
 type UserInputData struct {
-	FirstName    string
-	LastName     string
+	FirstName    *string
+	LastName     *string
 	Username     *string
-	ImageURL     string
+	ImageURL     *string
 	EmailAddress *string
 	Phone        *string
 }
 
 type OrgInputData struct {
 	Name     string
-	ImageURL string
+	ImageURL *string
 }
 
 type CreateUserData struct {
-	AccountID               string
-	IsEmployee              bool
-	ShouldCreatePersonalOrg bool
+	AccountID     string
+	UserID        *pulid.ID
+	IsEmployee    bool
+	PersonalOrgID *pulid.ID
 	UserInputData
 }
 
 type CreateOrgData struct {
 	UserID       pulid.ID
+	OrgID        *pulid.ID
 	OrgAccountID string
 	OrgInputData
 }
@@ -70,6 +73,8 @@ type AppClient interface {
 	GetUser(ctx context.Context, userID pulid.ID) (*User, error)
 	GetUserByAccountID(ctx context.Context, accountID string) (*User, error)
 	GetOrgByAccountID(ctx context.Context, accountID string) (*Organization, error)
+	GetUserByAccountIDOrNil(ctx context.Context, accountID string) (*User, error)
+	GetOrgByAccountIDOrNil(ctx context.Context, accountID string) (*Organization, error)
 	MembershipExists(ctx context.Context, orgID pulid.ID, userID pulid.ID) (bool, error)
 	SetOrgDetails(ctx context.Context, orgID pulid.ID, data *OrgInputData) error
 	SetUserProfileDetails(ctx context.Context, userID pulid.ID, data *UserInputData) error
@@ -87,10 +92,10 @@ type webhookEvent struct {
 type userData struct {
 	ID             string  `json:"id"`
 	ExternalID     string  `json:"external_id"`
-	FirstName      string  `json:"first_name"`
-	LastName       string  `json:"last_name"`
-	Username       *string `json:"username"`
-	ImageURL       string  `json:"image_url"`
+	FirstName      *string `json:"first_name,omitempty"`
+	LastName       *string `json:"last_name,omitempty"`
+	Username       *string `json:"username,omitempty"`
+	ImageURL       *string `json:"image_url,omitempty"`
 	EmailAddresses []struct {
 		EmailAddress string `json:"email_address"`
 	} `json:"email_addresses"`
@@ -108,7 +113,7 @@ type userPublicMetadata struct {
 type organizationData struct {
 	ID             string            `json:"id"`
 	Name           string            `json:"name"`
-	ImageURL       string            `json:"image_url"`
+	ImageURL       *string           `json:"image_url,omitempty"`
 	CreatedBy      string            `json:"created_by"`
 	PublicMetadata orgPublicMetadata `json:"public_metadata"`
 }
@@ -140,18 +145,6 @@ func (c *ClerkHook) GetUserByAccountID(
 	}
 
 	return user, nil
-}
-
-func (c *ClerkHook) GetOrgByAccountID(
-	ctx context.Context,
-	accountID string,
-) (*Organization, error) {
-	org, err := c.appClient.GetOrgByAccountID(ctx, accountID)
-	if err != nil {
-		return nil, fmt.Errorf("org with accountID %v not found: %w", accountID, err)
-	}
-
-	return org, nil
 }
 
 func (c *ClerkHook) handleUserCreated(
@@ -193,6 +186,8 @@ func (c *ClerkHook) handleUserCreated(
 			EmailAddress: emailAddress,
 			Phone:        phone,
 		},
+		PersonalOrgID: nil,
+		UserID:        nil,
 	})
 	if err != nil {
 		return err
@@ -204,7 +199,7 @@ func (c *ClerkHook) handleUserCreated(
 		role = "EMPLOYEE"
 	}
 
-	publicMetadata := &userPublicMetadata{UserID: userID, Role: role}
+	publicMetadata := &userPublicMetadata{UserID: userID, Role: role, PersonalOrgID: ""}
 	if shouldCreatePersonalOrg {
 		if user.PersonalOrgID == nil {
 			return fmt.Errorf("user %s does not have a personal org", user.ID)
@@ -264,6 +259,117 @@ func (c *ClerkHook) handleUserUpdated(ctx context.Context, data []byte) error {
 	return nil
 }
 
+func (c *ClerkHook) GetOrCreateUserByAccountID(
+	ctx context.Context,
+	accountID string,
+	userID *pulid.ID,
+	personalOrgID *pulid.ID,
+	isEmployee bool,
+) (*User, error) {
+	user, err := c.appClient.GetUserByAccountIDOrNil(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"fetching user with accountID: %s: %w",
+			accountID,
+			err,
+		)
+	}
+
+	if user != nil {
+		return user, nil
+	}
+
+	clerkUser, err := clerkuser.Get(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"fetching clerk user with id: %s: %w",
+			accountID,
+			err,
+		)
+	}
+
+	var emailAddress, phone *string
+	if len(clerkUser.EmailAddresses) > 0 {
+		emailAddress = &clerkUser.EmailAddresses[0].EmailAddress
+	}
+	if len(clerkUser.PhoneNumbers) > 0 {
+		phone = &clerkUser.PhoneNumbers[0].PhoneNumber
+	}
+
+	createdUser, err := c.appClient.CreateUser(ctx, &CreateUserData{
+		AccountID: accountID,
+		UserID:    userID,
+		UserInputData: UserInputData{
+			FirstName:    clerkUser.FirstName,
+			LastName:     clerkUser.LastName,
+			Username:     clerkUser.Username,
+			ImageURL:     clerkUser.ImageURL,
+			EmailAddress: emailAddress,
+			Phone:        phone,
+		},
+		PersonalOrgID: personalOrgID,
+		IsEmployee:    isEmployee,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating user: %w", err)
+	}
+
+	return createdUser, nil
+}
+
+func (c *ClerkHook) GetOrCreateOrgByAccountID(
+	ctx context.Context,
+	accountID string,
+	userID pulid.ID,
+	orgID *pulid.ID,
+) (*Organization, error) {
+	org, err := c.appClient.GetOrgByAccountIDOrNil(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"fetching org with accountID: %s: %w",
+			accountID,
+			err,
+		)
+	}
+
+	if org != nil {
+		return org, nil
+	}
+
+	clerkOrg, err := clerkorg.Get(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"fetching clerk org with id: %s: %w",
+			accountID,
+			err,
+		)
+	}
+
+	createdOrg, err := c.appClient.CreateOrganization(ctx, &CreateOrgData{
+		OrgAccountID: accountID,
+		UserID:       userID,
+		OrgID:        orgID,
+		OrgInputData: OrgInputData{
+			Name:     clerkOrg.Name,
+			ImageURL: clerkOrg.ImageURL,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating org: %w", err)
+	}
+
+	return createdOrg, nil
+}
+
+func (c *ClerkHook) GetPersonalOrgByAccountID(
+	ctx context.Context,
+	accountID string,
+	user *User,
+	orgID *pulid.ID,
+) (*Organization, error) {
+	return c.appClient.GetOrgByAccountID(ctx, accountID)
+}
+
 func (c *ClerkHook) handleOrganizationCreated(ctx context.Context, data []byte) error {
 	var orgData organizationData
 	if err := json.Unmarshal(data, &orgData); err != nil {
@@ -283,6 +389,7 @@ func (c *ClerkHook) handleOrganizationCreated(ctx context.Context, data []byte) 
 			Name:     orgData.Name,
 			ImageURL: orgData.ImageURL,
 		},
+		OrgID: nil,
 	})
 	if err != nil {
 		return err
@@ -346,7 +453,7 @@ func (c *ClerkHook) handleOrganizationMembershipCreated(
 	// Check if membership already exists to avoid erroring in webhooks.
 	// When a new organization is created, it fires the organization.Created event and the
 	// organizationMembership.Created event, so the second hook fails when writing the
-	// membership due to it already existing from the org CreateWithAdmin call from the first hook.
+	// membership due to it already existing from the org Create Action call from the first hook.
 	exists, err := c.appClient.MembershipExists(ctx, org.ID, user.ID)
 	if err == nil && exists {
 		return nil
@@ -445,30 +552,29 @@ func (c *ClerkHook) HandleHooks(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
-	secretKey string,
 	opts ...ClerkHookOption,
 ) error {
 	ctx = logger.AppendCtx(ctx, slog.String("webhook", "clerk"))
 
-	clerkOpts := &clerkHookOptions{}
+	clerkOpts := &clerkHookOptions{shouldCreatePersonalOrg: false}
 	for _, opt := range opts {
 		opt(clerkOpts)
 	}
 
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
-		return fmt.Errorf("Failed to read request: %w", err)
+		return fmt.Errorf("failed to read request: %w", err)
 	}
 	defer r.Body.Close()
 
 	err = c.wh.Verify(payload, r.Header)
 	if err != nil {
-		return fmt.Errorf("Invalid webhook signature: %w", err)
+		return fmt.Errorf("invalid webhook signature: %w", err)
 	}
 
 	var event webhookEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("Failed to parse webhook payload: %w", err)
+		return fmt.Errorf("failed to parse webhook payload: %w", err)
 	}
 
 	switch event.Type {
@@ -487,7 +593,7 @@ func (c *ClerkHook) HandleHooks(
 	case "organizationMembership.deleted":
 		err = c.handleOrganizationMembershipDeleted(ctx, event.Data)
 	default:
-		return fmt.Errorf("Unhandled event type")
+		return fmt.Errorf("unhandled event type")
 	}
 
 	if err != nil {
