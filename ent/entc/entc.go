@@ -17,10 +17,9 @@ import (
 )
 
 type TemplateData struct {
-	Node     *gen.Type
-	Actions  []*schema.ActionDef
-	NumHooks int
-	EntName  string
+	Node    *gen.Type
+	Actions []*schema.ActionDef
+	EntName string
 }
 
 func getActions(node *gen.Type, registry map[string]ent.Interface) ([]*schema.ActionDef, error) {
@@ -54,6 +53,7 @@ func BuildEntTemplates(
 	graph *gen.Graph,
 	registry map[string]ent.Interface,
 	entName string,
+	basedir string,
 ) {
 	for _, template := range entTemplates {
 		for _, node := range graph.Nodes {
@@ -64,7 +64,7 @@ func BuildEntTemplates(
 			data := &TemplateData{Node: node, Actions: actions, EntName: entName}
 
 			filename := filepath.Join(
-				"./internal",
+				basedir,
 				entName,
 				strings.ToLower(node.Name)+"_"+template.Name()+".go",
 			)
