@@ -281,7 +281,11 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 	}
 
 	emailAddress := lo.EmptyableToPtr(lo.FirstOrEmpty(clerkUser.EmailAddresses).EmailAddress)
-	phone := lo.EmptyableToPtr(lo.FirstOrEmpty(clerkUser.PhoneNumbers).PhoneNumber)
+	phoneNumber := lo.FirstOrEmpty(clerkUser.PhoneNumbers)
+	phone := lo.EmptyableToPtr("")
+	if phoneNumber != nil {
+		lo.EmptyableToPtr(phoneNumber.PhoneNumber)
+	}
 
 	createdUser, err := c.appClient.CreateUser(ctx, &CreateUserData{
 		AccountID: accountID,
