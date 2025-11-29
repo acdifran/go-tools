@@ -74,12 +74,18 @@ func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
 		level = color.MagentaString(level)
 	case slog.LevelInfo:
 		level = color.BlueString(level)
+	case LevelNotice:
+		level = color.GreenString(level)
 	case slog.LevelWarn:
 		level = color.YellowString(level)
 	case slog.LevelError:
 		level = color.RedString(level)
 	case LevelCritical:
-		level = color.HiRedString(level)
+		level = color.New(color.FgBlack, color.BgRed, color.Bold).Sprintf(" %s ", level)
+	case LevelAlert:
+		level = color.New(color.FgWhite, color.BgRed, color.Bold).Sprintf(" %s ", level)
+	case LevelEmergency:
+		level = color.New(color.FgYellow, color.BgRed, color.Bold).Sprintf(" %s ", level)
 	}
 
 	// Format remaining fields as indented JSON
@@ -108,6 +114,26 @@ func NewPrettyHandler(opts *PrettyHandlerOptions) *PrettyHandler {
 	}
 	hopts := &slog.HandlerOptions{
 		Level: level,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if groups != nil {
+				return a
+			}
+			if a.Key == slog.LevelKey {
+				switch a.Value.Any().(slog.Level) {
+				case LevelNotice:
+					a.Value = slog.StringValue("NOTICE")
+				case LevelCritical:
+					a.Value = slog.StringValue("CRITICAL")
+				case LevelAlert:
+					a.Value = slog.StringValue("ALERT")
+				case LevelEmergency:
+					a.Value = slog.StringValue("EMERGENCY")
+				case slog.LevelDebug, slog.LevelInfo, slog.LevelWarn, slog.LevelError:
+					// Keep default severity label for these levels
+				}
+			}
+			return a
+		},
 	}
 
 	buf := new(bytes.Buffer)
@@ -121,7 +147,7 @@ func NewPrettyHandler(opts *PrettyHandlerOptions) *PrettyHandler {
 	return h
 }
 
-func NewPrettyLogger(opts *PrettyHandlerOptions) *slog.Logger {
+func NewPrettySlogger(opts *PrettyHandlerOptions) *slog.Logger {
 	handler := NewPrettyHandler(opts)
 	return slog.New(handler)
 }

@@ -64,10 +64,16 @@ func NewGoogleHandler(opts *GoogleHandlerOptions) *GoogleHandler {
 				a.Key = "severity"
 				level := a.Value.Any().(slog.Level)
 				switch level {
-				case LevelCritical:
-					a.Value = slog.StringValue("CRITICAL")
+				case LevelNotice:
+					a.Value = slog.StringValue("NOTICE")
 				case slog.LevelWarn:
 					a.Value = slog.StringValue("WARNING")
+				case LevelCritical:
+					a.Value = slog.StringValue("CRITICAL")
+				case LevelAlert:
+					a.Value = slog.StringValue("ALERT")
+				case LevelEmergency:
+					a.Value = slog.StringValue("EMERGENCY")
 				case slog.LevelDebug, slog.LevelInfo, slog.LevelError:
 					// Keep default severity label for these levels
 				}
@@ -81,7 +87,7 @@ func NewGoogleHandler(opts *GoogleHandlerOptions) *GoogleHandler {
 	}
 }
 
-func NewGoogleLogger(opts *GoogleHandlerOptions) *slog.Logger {
+func NewGoogleSlogger(opts *GoogleHandlerOptions) *slog.Logger {
 	handler := NewGoogleHandler(opts)
 	return slog.New(handler)
 }
