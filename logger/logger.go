@@ -4,6 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"sync/atomic"
+
+	"entgo.io/ent"
+	"github.com/99designs/gqlgen/graphql"
+	"github.com/acdifran/go-tools/pulid"
 )
 
 type ctxKey string
@@ -272,4 +276,91 @@ func AppendCtx(parent context.Context, attr slog.Attr) context.Context {
 
 	v := []slog.Attr{attr}
 	return context.WithValue(parent, slogFields, v)
+}
+
+// GetErrorAttributes constructs error log attributes for the given error and context.
+func GetErrorAttributes(ctx context.Context, err error) []any {
+	attrs := []any{slog.Any("error", err)}
+
+	opctx := graphql.GetOperationContext(ctx)
+	attrs = append(attrs,
+		slog.Group(
+			"request",
+			slog.String("name", opctx.Operation.Name),
+			slog.Any("variables", opctx.Variables),
+		),
+	)
+
+	return attrs
+}
+
+// EntMutationAttrs constructs log attributes for the given Ent mutation.
+func EntMutationAttrs(m ent.Mutation) []any {
+	attrs := []any{}
+
+	// Get entity ID if available
+	var id pulid.ID
+	if tm, ok := m.(interface{ ID() (pulid.ID, bool) }); ok {
+		id, _ = tm.ID()
+	}
+
+	attrs = append(attrs, slog.String("_id", string(id)))
+	attrs = append(attrs, slog.String("type", m.Type()))
+	attrs = append(attrs, slog.String("op", m.Op().String()))
+
+	// Collect field attributes
+	fieldAttrs := []any{}
+
+	// Changed fields with their values
+	for _, fieldName := range m.Fields() {
+		if value, ok := m.Field(fieldName); ok {
+			fieldAttrs = append(fieldAttrs, slog.Any(fieldName, value))
+		}
+	}
+
+	// Incremented/decremented fields
+	for _, fieldName := range m.AddedFields() {
+		if delta, ok := m.AddedField(fieldName); ok {
+			fieldAttrs = append(fieldAttrs, slog.Any(fieldName+"_delta", delta))
+		}
+	}
+
+	// Cleared fields
+	for _, fieldName := range m.ClearedFields() {
+		fieldAttrs = append(fieldAttrs, slog.Bool(fieldName+"_cleared", true))
+	}
+
+	if len(fieldAttrs) > 0 {
+		attrs = append(attrs, slog.Group("fields", fieldAttrs...))
+	}
+
+	// Collect edge attributes
+	edgeAttrs := []any{}
+
+	// Added edges with IDs
+	for _, edgeName := range m.AddedEdges() {
+		edgeIDs := m.AddedIDs(edgeName)
+		if len(edgeIDs) > 0 {
+			edgeAttrs = append(edgeAttrs, slog.Any(edgeName+"_added", edgeIDs))
+		}
+	}
+
+	// Removed edges with IDs
+	for _, edgeName := range m.RemovedEdges() {
+		edgeIDs := m.RemovedIDs(edgeName)
+		if len(edgeIDs) > 0 {
+			edgeAttrs = append(edgeAttrs, slog.Any(edgeName+"_removed", edgeIDs))
+		}
+	}
+
+	// Cleared edges
+	for _, edgeName := range m.ClearedEdges() {
+		edgeAttrs = append(edgeAttrs, slog.Bool(edgeName+"_cleared", true))
+	}
+
+	if len(edgeAttrs) > 0 {
+		attrs = append(attrs, slog.Group("edges", edgeAttrs...))
+	}
+
+	return attrs
 }
