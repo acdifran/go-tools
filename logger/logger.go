@@ -252,18 +252,24 @@ func LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...slog.A
 	Default().LogAttrs(ctx, level, msg, attrs...)
 }
 
-// Appends an attribute to the context for logging
+// Appends an attribute to the context for logging.
+// If the attribute key already exists, it replaces the value instead of appending.
 func AppendCtx(parent context.Context, attr slog.Attr) context.Context {
 	if parent == nil {
 		parent = context.Background()
 	}
 
 	if v, ok := parent.Value(slogFields).([]slog.Attr); ok {
+		for i, existing := range v {
+			if existing.Key == attr.Key {
+				v[i] = attr
+				return context.WithValue(parent, slogFields, v)
+			}
+		}
 		v = append(v, attr)
 		return context.WithValue(parent, slogFields, v)
 	}
 
-	v := []slog.Attr{}
-	v = append(v, attr)
+	v := []slog.Attr{attr}
 	return context.WithValue(parent, slogFields, v)
 }

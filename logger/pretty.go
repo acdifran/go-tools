@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
 
+	"github.com/acdifran/go-tools/clienterror"
 	"github.com/fatih/color"
 )
 
@@ -48,6 +50,27 @@ func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
 		for _, attr := range attrs {
 			r.AddAttrs(attr)
 		}
+	}
+
+	// Extract error attributes from any attribute value that's an error
+	var errorAttrs []slog.Attr
+	r.Attrs(func(attr slog.Attr) bool {
+		if err, ok := attr.Value.Any().(error); ok {
+			// Extract attributes from wrapped error
+			errorAttrs = append(errorAttrs, ExtractAttrs(err)...)
+
+			// Extract client error message if present
+			var cerr *clienterror.Error
+			if errors.As(err, &cerr) {
+				errorAttrs = append(errorAttrs, slog.String("client_message", cerr.ClientMsg()))
+			}
+		}
+		return true
+	})
+
+	// Add collected error attributes to the record
+	if len(errorAttrs) > 0 {
+		r.AddAttrs(errorAttrs...)
 	}
 
 	h.buf.Reset()
