@@ -22,6 +22,7 @@ type PrettyHandler struct {
 	handler slog.Handler
 	buf     *bytes.Buffer
 	l       *log.Logger
+	attrs   []slog.Attr // Track attributes added via WithAttrs
 }
 
 func (h *PrettyHandler) Enabled(ctx context.Context, level slog.Level) bool {
@@ -33,6 +34,7 @@ func (h *PrettyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 		handler: h.handler.WithAttrs(attrs),
 		buf:     h.buf,
 		l:       h.l,
+		attrs:   append(h.attrs, attrs...), // Accumulate attributes
 	}
 }
 
@@ -41,6 +43,7 @@ func (h *PrettyHandler) WithGroup(name string) slog.Handler {
 		handler: h.handler.WithGroup(name),
 		buf:     h.buf,
 		l:       h.l,
+		attrs:   h.attrs, // Preserve accumulated attributes
 	}
 }
 
@@ -51,11 +54,10 @@ func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
 		ctxAttrs = attrs
 	}
 
-	// Extract error attributes from any attribute value that's an error
+	// Extract error attributes from record attrs
 	var errorAttrs []slog.Attr
 	r.Attrs(func(attr slog.Attr) bool {
 		if err, ok := attr.Value.Any().(error); ok {
-			// Extract attributes from wrapped error
 			errorAttrs = append(errorAttrs, ExtractAttrs(err)...)
 
 			// Extract client error message if present
@@ -67,7 +69,20 @@ func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
 		return true
 	})
 
-	// Add only error attributes to the record (they should be grouped)
+	// Also check handler's accumulated attributes (from WithAttrs/WithError)
+	for _, attr := range h.attrs {
+		if err, ok := attr.Value.Any().(error); ok {
+			errorAttrs = append(errorAttrs, ExtractAttrs(err)...)
+
+			// Extract client error message if present
+			var cerr *clienterror.Error
+			if errors.As(err, &cerr) {
+				errorAttrs = append(errorAttrs, slog.String("client_message", cerr.ClientMsg()))
+			}
+		}
+	}
+
+	// Add error attributes to the record
 	if len(errorAttrs) > 0 {
 		r.AddAttrs(errorAttrs...)
 	}
@@ -169,6 +184,7 @@ func NewPrettyHandler(opts *PrettyHandlerOptions) *PrettyHandler {
 		handler: slog.NewJSONHandler(buf, hopts),
 		buf:     buf,
 		l:       log.New(os.Stdout, "", 0),
+		attrs:   []slog.Attr{}, // Initialize empty attrs slice
 	}
 
 	return h

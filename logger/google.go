@@ -18,6 +18,7 @@ type GoogleHandlerOptions struct {
 type GoogleHandler struct {
 	handler slog.Handler
 	buf     *bytes.Buffer
+	attrs   []slog.Attr // Track attributes added via WithAttrs
 }
 
 func (h *GoogleHandler) Enabled(ctx context.Context, level slog.Level) bool {
@@ -28,6 +29,7 @@ func (h *GoogleHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &GoogleHandler{
 		handler: h.handler.WithAttrs(attrs),
 		buf:     h.buf,
+		attrs:   append(h.attrs, attrs...), // Accumulate attributes
 	}
 }
 
@@ -35,6 +37,7 @@ func (h *GoogleHandler) WithGroup(name string) slog.Handler {
 	return &GoogleHandler{
 		handler: h.handler.WithGroup(name),
 		buf:     h.buf,
+		attrs:   h.attrs, // Preserve accumulated attributes
 	}
 }
 
@@ -49,10 +52,7 @@ func (h *GoogleHandler) Handle(ctx context.Context, r slog.Record) error {
 	var errorAttrs []slog.Attr
 	r.Attrs(func(attr slog.Attr) bool {
 		if err, ok := attr.Value.Any().(error); ok {
-			// Extract attributes from wrapped error
 			errorAttrs = append(errorAttrs, ExtractAttrs(err)...)
-
-			// Extract client error message if present
 			var cerr *clienterror.Error
 			if errors.As(err, &cerr) {
 				errorAttrs = append(errorAttrs, slog.String("client_message", cerr.ClientMsg()))
@@ -60,6 +60,17 @@ func (h *GoogleHandler) Handle(ctx context.Context, r slog.Record) error {
 		}
 		return true
 	})
+
+	// Also check handler's accumulated attributes (from WithAttrs/WithError)
+	for _, attr := range h.attrs {
+		if err, ok := attr.Value.Any().(error); ok {
+			errorAttrs = append(errorAttrs, ExtractAttrs(err)...)
+			var cerr *clienterror.Error
+			if errors.As(err, &cerr) {
+				errorAttrs = append(errorAttrs, slog.String("client_message", cerr.ClientMsg()))
+			}
+		}
+	}
 
 	// Add only error attributes to the record (they should be grouped)
 	if len(errorAttrs) > 0 {
@@ -133,6 +144,7 @@ func NewGoogleHandler(opts *GoogleHandlerOptions) *GoogleHandler {
 	return &GoogleHandler{
 		handler: slog.NewJSONHandler(buf, hopts),
 		buf:     buf,
+		attrs:   []slog.Attr{}, // Initialize empty attrs slice
 	}
 }
 

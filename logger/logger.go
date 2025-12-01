@@ -146,6 +146,16 @@ func (l *Logger) Slog() *slog.Logger {
 	return l.logger
 }
 
+// WithRequest returns a Logger that includes request attributes in each output operation.
+func (l *Logger) WithRequest(ctx context.Context, r *http.Request) *Logger {
+	return l.With(GetFullRequestAttributes(ctx, r)...)
+}
+
+// WithError returns a Logger that includes the given error in each output operation.
+func (l *Logger) WithError(err error) *Logger {
+	return l.With("error", err)
+}
+
 // Global default logger
 var defaultLogger atomic.Pointer[Logger]
 
@@ -257,6 +267,21 @@ func LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...slog.A
 	Default().LogAttrs(ctx, level, msg, attrs...)
 }
 
+// With returns a Logger that includes the given attributes in each output operation using the default logger.
+func With(args ...any) *Logger {
+	return Default().With(args...)
+}
+
+// WithRequest returns a Logger that includes request attributes in each output operation.
+func WithRequest(ctx context.Context, r *http.Request) *Logger {
+	return With(GetFullRequestAttributes(ctx, r)...)
+}
+
+// WithError returns a Logger that includes the given error in each output operation.
+func WithError(err error) *Logger {
+	return With("error", err)
+}
+
 // Appends an attribute to the context for logging.
 // If the attribute key already exists, it replaces the value instead of appending.
 // Context attributes are always added at the top level, regardless of logger groups.
@@ -282,8 +307,8 @@ func AppendCtx(parent context.Context, attr slog.Attr) context.Context {
 }
 
 // GetFullRequestAttributes constructs error log attributes for the given error and context.
-func GetFullRequestAttributes(ctx context.Context, err error, r *http.Request) []any {
-	attrs := []any{slog.Any("error", err)}
+func GetFullRequestAttributes(ctx context.Context, r *http.Request) []any {
+	attrs := []any{}
 
 	opctx := graphql.GetOperationContext(ctx)
 
