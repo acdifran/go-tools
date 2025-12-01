@@ -1,7 +1,9 @@
 package logger
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"os"
@@ -15,6 +17,7 @@ type GoogleHandlerOptions struct {
 
 type GoogleHandler struct {
 	handler slog.Handler
+	buf     *bytes.Buffer
 }
 
 func (h *GoogleHandler) Enabled(ctx context.Context, level slog.Level) bool {
@@ -24,21 +27,22 @@ func (h *GoogleHandler) Enabled(ctx context.Context, level slog.Level) bool {
 func (h *GoogleHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &GoogleHandler{
 		handler: h.handler.WithAttrs(attrs),
+		buf:     h.buf,
 	}
 }
 
 func (h *GoogleHandler) WithGroup(name string) slog.Handler {
 	return &GoogleHandler{
 		handler: h.handler.WithGroup(name),
+		buf:     h.buf,
 	}
 }
 
 func (h *GoogleHandler) Handle(ctx context.Context, r slog.Record) error {
-	// Add context attrs to the record
+	// Extract context attrs separately (don't add to record yet)
+	var ctxAttrs []slog.Attr
 	if attrs, ok := ctx.Value(slogFields).([]slog.Attr); ok {
-		for _, attr := range attrs {
-			r.AddAttrs(attr)
-		}
+		ctxAttrs = attrs
 	}
 
 	// Extract error attributes from any attribute value that's an error
@@ -57,12 +61,30 @@ func (h *GoogleHandler) Handle(ctx context.Context, r slog.Record) error {
 		return true
 	})
 
-	// Add collected error attributes to the record
+	// Add only error attributes to the record (they should be grouped)
 	if len(errorAttrs) > 0 {
 		r.AddAttrs(errorAttrs...)
 	}
 
-	return h.handler.Handle(ctx, r)
+	h.buf.Reset()
+	if err := h.handler.Handle(ctx, r); err != nil {
+		return err
+	}
+
+	// Parse the JSON output
+	var output map[string]any
+	if err := json.Unmarshal(h.buf.Bytes(), &output); err != nil {
+		return err
+	}
+
+	// Add context attrs directly to output (bypasses groups)
+	for _, attr := range ctxAttrs {
+		output[attr.Key] = attr.Value.Any()
+	}
+
+	// Re-encode and write to stdout
+	encoder := json.NewEncoder(os.Stdout)
+	return encoder.Encode(output)
 }
 
 func NewGoogleHandler(opts *GoogleHandlerOptions) *GoogleHandler {
@@ -106,8 +128,11 @@ func NewGoogleHandler(opts *GoogleHandlerOptions) *GoogleHandler {
 		},
 	}
 
+	buf := new(bytes.Buffer)
+
 	return &GoogleHandler{
-		handler: slog.NewJSONHandler(os.Stdout, hopts),
+		handler: slog.NewJSONHandler(buf, hopts),
+		buf:     buf,
 	}
 }
 

@@ -3,6 +3,7 @@ package logger
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"sync/atomic"
 
 	"entgo.io/ent"
@@ -258,12 +259,14 @@ func LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...slog.A
 
 // Appends an attribute to the context for logging.
 // If the attribute key already exists, it replaces the value instead of appending.
+// Context attributes are always added at the top level, regardless of logger groups.
 func AppendCtx(parent context.Context, attr slog.Attr) context.Context {
 	if parent == nil {
 		parent = context.Background()
 	}
 
 	if v, ok := parent.Value(slogFields).([]slog.Attr); ok {
+		// Check if attribute with same key exists
 		for i, existing := range v {
 			if existing.Key == attr.Key {
 				v[i] = attr
@@ -278,18 +281,34 @@ func AppendCtx(parent context.Context, attr slog.Attr) context.Context {
 	return context.WithValue(parent, slogFields, v)
 }
 
-// GetErrorAttributes constructs error log attributes for the given error and context.
-func GetErrorAttributes(ctx context.Context, err error) []any {
+// GetFullRequestAttributes constructs error log attributes for the given error and context.
+func GetFullRequestAttributes(ctx context.Context, err error, r *http.Request) []any {
 	attrs := []any{slog.Any("error", err)}
 
 	opctx := graphql.GetOperationContext(ctx)
-	attrs = append(attrs,
-		slog.Group(
-			"request",
-			slog.String("name", opctx.Operation.Name),
-			slog.Any("variables", opctx.Variables),
-		),
-	)
+
+	if opctx != nil {
+		attrs = append(attrs,
+			slog.Group(
+				"graphql",
+				slog.String("operation_name", opctx.Operation.Name),
+				slog.Any("variables", opctx.Variables),
+			),
+		)
+	}
+
+	if r != nil {
+		attrs = append(attrs,
+			slog.Group(
+				"request",
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.String("remote_addr", r.RemoteAddr),
+				slog.String("user_agent", r.UserAgent()),
+				slog.String("referer", r.Referer()),
+			),
+		)
+	}
 
 	return attrs
 }

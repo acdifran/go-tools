@@ -45,11 +45,10 @@ func (h *PrettyHandler) WithGroup(name string) slog.Handler {
 }
 
 func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
-	// Add context attrs to the record
+	// Extract context attrs and error attrs separately (don't add to record yet)
+	var ctxAttrs []slog.Attr
 	if attrs, ok := ctx.Value(slogFields).([]slog.Attr); ok {
-		for _, attr := range attrs {
-			r.AddAttrs(attr)
-		}
+		ctxAttrs = attrs
 	}
 
 	// Extract error attributes from any attribute value that's an error
@@ -68,7 +67,7 @@ func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
 		return true
 	})
 
-	// Add collected error attributes to the record
+	// Add only error attributes to the record (they should be grouped)
 	if len(errorAttrs) > 0 {
 		r.AddAttrs(errorAttrs...)
 	}
@@ -82,6 +81,11 @@ func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
 	var output map[string]any
 	if err := json.Unmarshal(h.buf.Bytes(), &output); err != nil {
 		return err
+	}
+
+	// Add context attrs directly to output (bypasses groups)
+	for _, attr := range ctxAttrs {
+		output[attr.Key] = attr.Value.Any()
 	}
 
 	// Extract and remove built-in fields
