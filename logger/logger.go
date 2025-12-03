@@ -310,9 +310,8 @@ func AppendCtx(parent context.Context, attr slog.Attr) context.Context {
 func GetFullRequestAttributes(ctx context.Context, r *http.Request) []any {
 	attrs := []any{}
 
-	opctx := graphql.GetOperationContext(ctx)
-
-	if opctx != nil {
+	if graphql.HasOperationContext(ctx) {
+		opctx := graphql.GetOperationContext(ctx)
 		attrs = append(attrs,
 			slog.Group(
 				"graphql",
