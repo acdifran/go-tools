@@ -9,6 +9,7 @@ import (
 	"entgo.io/ent"
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/acdifran/go-tools/pulid"
+	"github.com/samber/lo"
 )
 
 type ctxKey string
@@ -315,7 +316,7 @@ func GetFullRequestAttributes(ctx context.Context, r *http.Request) []any {
 		attrs = append(attrs,
 			slog.Group(
 				"graphql",
-				slog.String("operation_name", opctx.Operation.Name),
+				slog.String("operation_name", lo.FromPtr(opctx.Operation).Name),
 				slog.Any("variables", opctx.Variables),
 			),
 		)
