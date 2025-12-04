@@ -19,22 +19,21 @@ func ErrorPresenter(
 
 	var cerr *clienterror.Error
 	if errors.As(err, &cerr) {
-		return gqlerror.ErrorPathf(path, "%s", cerr.ClientMsg())
+		return gqlerror.ErrorPathf(path, cerr.ClientMsg())
+	} else if errors.Is(err, privacyDenyErr) {
+		return gqlerror.ErrorPathf(path, "Permission denied")
+	} else if isNotFound(err) {
+		return gqlerror.ErrorPathf(path, "Not found")
 	}
 
+	// Unwrap the top level graphql error
+	if errInternal := errors.Unwrap(err); errInternal != nil {
+		err = errInternal
+	}
 	if errors.As(err, &gqlErr) {
 		if gqlErr.Path == nil {
 			gqlErr.Path = path
 		}
-
-		if errors.Is(err, privacyDenyErr) {
-			gqlErr.Message = "Permission denied"
-		} else if isNotFound(err) {
-			gqlErr.Message = "Not found"
-		} else {
-			gqlErr.Message = "Sorry, something went wrong"
-		}
-
 		return gqlErr
 	}
 
