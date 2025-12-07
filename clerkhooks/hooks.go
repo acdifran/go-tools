@@ -48,10 +48,11 @@ type OrgInputData struct {
 }
 
 type CreateUserData struct {
-	AccountID     string
-	UserID        *pulid.ID
-	IsEmployee    bool
-	PersonalOrgID *pulid.ID
+	AccountID               string
+	UserID                  *pulid.ID
+	IsEmployee              bool
+	PersonalOrgID           *pulid.ID
+	ExternalAccountProvider *string
 	UserInputData
 }
 
@@ -93,12 +94,16 @@ type webhookEvent struct {
 }
 
 type userData struct {
-	ID             string  `json:"id"`
-	ExternalID     string  `json:"external_id"`
-	FirstName      *string `json:"first_name,omitempty"`
-	LastName       *string `json:"last_name,omitempty"`
-	Username       *string `json:"username,omitempty"`
-	ImageURL       *string `json:"image_url,omitempty"`
+	ID               string  `json:"id"`
+	ExternalID       string  `json:"external_id"`
+	FirstName        *string `json:"first_name,omitempty"`
+	LastName         *string `json:"last_name,omitempty"`
+	Username         *string `json:"username,omitempty"`
+	ImageURL         *string `json:"image_url,omitempty"`
+	ExternalAccounts []struct {
+		EmailAddress string `json:"email_address,omitempty"`
+		Provider     string `json:"provider,omitempty"`
+	} `json:"external_accounts,omitempty"`
 	EmailAddresses []struct {
 		EmailAddress string `json:"email_address"`
 	} `json:"email_addresses"`
@@ -175,6 +180,9 @@ func (c *ClerkHook) handleUserCreated(
 
 	emailAddress := lo.EmptyableToPtr(lo.FirstOrEmpty(userData.EmailAddresses).EmailAddress)
 	phone := lo.EmptyableToPtr(lo.FirstOrEmpty(userData.PhoneNumbers).PhoneNumber)
+	externalAccountProvider := lo.EmptyableToPtr(
+		lo.FirstOrEmpty(userData.ExternalAccounts).Provider,
+	)
 
 	user, err := c.appClient.CreateUser(ctx, &CreateUserData{
 		AccountID:  userData.ID,
@@ -187,8 +195,9 @@ func (c *ClerkHook) handleUserCreated(
 			EmailAddress: emailAddress,
 			Phone:        phone,
 		},
-		PersonalOrgID: nil,
-		UserID:        nil,
+		PersonalOrgID:           nil,
+		UserID:                  nil,
+		ExternalAccountProvider: externalAccountProvider,
 	})
 	if err != nil {
 		return err
