@@ -12,18 +12,18 @@ type MutationWithOrg interface {
 func SetOrgHook() func(next {{$.Annotations.EntName}}.Mutator) {{$.Annotations.EntName}}.Mutator {
 	return func(next {{$.Annotations.EntName}}.Mutator) {{$.Annotations.EntName}}.Mutator {
 		return {{$.Annotations.EntName}}.MutateFunc(func(ctx context.Context, m {{$.Annotations.EntName}}.Mutation) ({{$.Annotations.EntName}}.Value, error) {
-			vc := viewer.FromContext(ctx)
-
 			tm, ok := m.(MutationWithOrg)
 			if !ok {
 				return nil, fmt.Errorf("unexpected mutation type %T", m)
 			}
 
+			vc := viewer.FromContext(ctx)
 			if vc.HasOrg() {
 				if _, ok := tm.OrganizationID(); !ok {
 					tm.SetOrganizationID(vc.OrgID)
 				}
 			}
+
 			return next.Mutate(ctx, m)
 		})
 	}
@@ -37,19 +37,20 @@ type MutationWithActor interface {
 func SetActorHook() func(next {{$.Annotations.EntName}}.Mutator) {{$.Annotations.EntName}}.Mutator {
 	return func(next {{$.Annotations.EntName}}.Mutator) {{$.Annotations.EntName}}.Mutator {
 		return {{$.Annotations.EntName}}.MutateFunc(func(ctx context.Context, m {{$.Annotations.EntName}}.Mutation) ({{$.Annotations.EntName}}.Value, error) {
-			vc := viewer.FromContext(ctx)
-			if vc.IsAnonymous() {
-				return nil, fmt.Errorf("viewer has no identity")
-			}
-
 			tm, ok := m.(MutationWithActor)
 			if !ok {
 				return nil, fmt.Errorf("unexpected mutation type %T", m)
 			}
 
 			if _, ok := tm.ActorID(); !ok {
+				vc := viewer.FromContext(ctx)
+				if vc.IsAnonymous() {
+					return nil, fmt.Errorf("viewer has no identity")
+				}
+
 				tm.SetActorID(vc.ID)
 			}
+
 			return next.Mutate(ctx, m)
 		})
 	}
@@ -63,19 +64,20 @@ type MutationWithUser interface {
 func SetUserHook() func(next {{$.Annotations.EntName}}.Mutator) {{$.Annotations.EntName}}.Mutator {
 	return func(next {{$.Annotations.EntName}}.Mutator) {{$.Annotations.EntName}}.Mutator {
 		return {{$.Annotations.EntName}}.MutateFunc(func(ctx context.Context, m {{$.Annotations.EntName}}.Mutation) ({{$.Annotations.EntName}}.Value, error) {
-			vc := viewer.FromContext(ctx)
-			if vc.IsAnonymous() {
-				return nil, fmt.Errorf("viewer has no identity")
-			}
-
 			tm, ok := m.(MutationWithUser)
 			if !ok {
 				return nil, fmt.Errorf("unexpected mutation type %T", m)
 			}
 
 			if _, ok := tm.UserID(); !ok {
+				vc := viewer.FromContext(ctx)
+				if vc.IsAnonymous() {
+					return nil, fmt.Errorf("viewer has no identity")
+				}
+
 				tm.SetUserID(vc.ID)
 			}
+
 			return next.Mutate(ctx, m)
 		})
 	}
@@ -89,19 +91,20 @@ type MutationWithCreatedBy interface {
 func SetCreatedByHook() func(next {{$.Annotations.EntName}}.Mutator) {{$.Annotations.EntName}}.Mutator {
 	return func(next {{$.Annotations.EntName}}.Mutator) {{$.Annotations.EntName}}.Mutator {
 		return {{$.Annotations.EntName}}.MutateFunc(func(ctx context.Context, m {{$.Annotations.EntName}}.Mutation) ({{$.Annotations.EntName}}.Value, error) {
-			vc := viewer.FromContext(ctx)
-			if vc.IsAnonymous() {
-				return next.Mutate(ctx, m)
-			}
-
 			tm, ok := m.(MutationWithCreatedBy)
 			if !ok {
 				return nil, fmt.Errorf("unexpected mutation type %T", m)
 			}
 
 			if _, ok := tm.CreatedByID(); !ok {
+				vc := viewer.FromContext(ctx)
+				if vc.IsAnonymous() {
+					return next.Mutate(ctx, m)
+				}
+
 				tm.SetCreatedByID(vc.ID)
 			}
+
 			return next.Mutate(ctx, m)
 		})
 	}
