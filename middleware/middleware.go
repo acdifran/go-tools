@@ -188,6 +188,7 @@ func getOrCreateUserAndWriteCustomClaims(
 
 func WriteClerkSessionClaimsFromLocalDB(
 	hook *clerkhooks.ClerkHook,
+	toApCtx func(ctx context.Context) context.Context,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +200,7 @@ func WriteClerkSessionClaimsFromLocalDB(
 				return
 			}
 
-			apCtx := viewer.AllPowerfulVC(ctx)
+			apCtx := toApCtx(ctx)
 			var err error
 			claims, err = getOrCreateUserAndWriteCustomClaims(
 				apCtx,

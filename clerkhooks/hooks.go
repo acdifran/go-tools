@@ -295,6 +295,8 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 	if phoneNumber != nil {
 		lo.EmptyableToPtr(phoneNumber.PhoneNumber)
 	}
+	provider := lo.EmptyableToPtr(lo.FirstOrEmpty(clerkUser.ExternalAccounts).Provider)
+	logger.Debug("creating account", "email", emailAddress, "provider", provider)
 
 	createdUser, err := c.appClient.CreateUser(ctx, &CreateUserData{
 		AccountID: accountID,
@@ -307,8 +309,9 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 			EmailAddress: emailAddress,
 			Phone:        phone,
 		},
-		PersonalOrgID: personalOrgID,
-		IsEmployee:    isEmployee,
+		PersonalOrgID:           personalOrgID,
+		IsEmployee:              isEmployee,
+		ExternalAccountProvider: provider,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)
