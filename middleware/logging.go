@@ -68,14 +68,16 @@ func AddRequestLogging(next http.Handler) http.Handler {
 	})
 }
 
-func AddViewerToLogs(next http.Handler, fromContext func(context.Context) any) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		vc := fromContext(ctx)
-		ctx = logger.AppendCtx(ctx, slog.Any("viewer", vc))
-		next.ServeHTTP(
-			w,
-			r.WithContext(ctx),
-		)
-	})
+func AddViewerToLogs(fromContext func(context.Context) any) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			vc := fromContext(ctx)
+			ctx = logger.AppendCtx(ctx, slog.Any("viewer", vc))
+			next.ServeHTTP(
+				w,
+				r.WithContext(ctx),
+			)
+		})
+	}
 }
