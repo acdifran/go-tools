@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -37,15 +38,24 @@ func AddRequestLogging(next http.Handler) http.Handler {
 		startTime := time.Now()
 		ctx = logger.AppendCtx(ctx, slog.String("request_id", uuid.NewString()))
 
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			logger.ErrorContext(ctx, "Error reading body", "error", err)
+			http.Error(w, "can't read body", http.StatusBadRequest)
+			return
+		}
+
 		requestLogger := logger.Default().WithGroup("request").With(
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.String("remote_addr", r.RemoteAddr),
 			slog.String("user_agent", r.UserAgent()),
 			slog.String("referer", r.Referer()),
+			slog.Any("body", body),
 		)
 		requestLogger.InfoContext(ctx, "Request Started")
 		crw := newCustomResponseWriter(w)
+		r.Body = io.NopCloser(bytes.NewBuffer(body))
 		next.ServeHTTP(
 			crw,
 			r.WithContext(ctx),
