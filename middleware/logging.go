@@ -2,12 +2,12 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/acdifran/go-tools/logger"
-	"github.com/acdifran/go-tools/viewer"
 	"github.com/google/uuid"
 )
 
@@ -68,10 +68,10 @@ func AddRequestLogging(next http.Handler) http.Handler {
 	})
 }
 
-func AddViewerToLogs(next http.Handler) http.Handler {
+func AddViewerToLogs(next http.Handler, fromContext func(context.Context) any) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		vc := viewer.FromContext(ctx)
+		vc := fromContext(ctx)
 		ctx = logger.AppendCtx(ctx, slog.Any("viewer", vc))
 		next.ServeHTTP(
 			w,
