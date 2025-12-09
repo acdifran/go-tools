@@ -63,9 +63,8 @@ func AddRequestLogging(next http.Handler) http.Handler {
 		if crw.statusCode >= 400 {
 			requestLogger.ErrorContext(
 				ctx,
-				"Request Failed",
+				crw.body.String(),
 				slog.Int("response_code", crw.statusCode),
-				slog.String("response_body", crw.body.String()),
 			)
 		}
 		endTime := time.Now()
