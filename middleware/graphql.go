@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/99designs/gqlgen/graphql/handler/transport"
+	"github.com/acdifran/go-tools/clerkhooks"
 	"github.com/acdifran/go-tools/viewer"
 	clerkjwt "github.com/clerk/clerk-sdk-go/v2/jwt"
 )
@@ -11,6 +12,7 @@ import (
 func WebsocketInit(
 	loggedOutVC func(ctx context.Context) context.Context,
 	newContextFromBase func(ctx context.Context, base *viewer.Context) context.Context,
+	createUser func(ctx context.Context, accountID string) (*clerkhooks.UserPublicMetadata, error),
 ) transport.WebsocketInitFunc {
 	return func(
 		ctx context.Context,
@@ -34,9 +36,11 @@ func WebsocketInit(
 		}
 
 		authContext := createAuthViewerContext(
+			ctx,
 			claims,
 			"",
 			"",
+			createUser,
 		)
 
 		return newContextFromBase(ctx, authContext), &initPayload, nil

@@ -56,9 +56,11 @@ type CustomClaims struct {
 }
 
 func createAuthViewerContext(
+	ctx context.Context,
 	claims *clerk.SessionClaims,
 	vcOverrideID string,
 	vcOverrideOrgID string,
+	createUser func(ctx context.Context, accountID string) (*clerkhooks.UserPublicMetadata, error),
 ) *viewer.Context {
 	customClaims, ok := claims.Custom.(*CustomClaims)
 	if !ok {
@@ -67,15 +69,23 @@ func createAuthViewerContext(
 	}
 
 	if customClaims.UserID == "" {
-		slog.Error("missing user ID in claims", "subject", claims.Subject)
-		return viewer.LoggedOutContext()
+		slog.Info("missing user ID in claims, creating user", "subject", claims.Subject)
+		userData, err := createUser(ctx, claims.Subject)
+		if err != nil {
+			slog.Error("creating user", "error", err)
+			return viewer.LoggedOutContext()
+		}
+		customClaims.UserID = userData.UserID
+		customClaims.PersonalOrgID = userData.PersonalOrgID
+		customClaims.Role = userData.Role
 	}
 
+	userID := customClaims.UserID
 	orgID := customClaims.OrgID
 
+	var err error
 	var orgMembershipRole membershiprole.MembershipRole
 	var orgAccountID string
-	var err error
 	if orgID != "" {
 		orgAccountID = claims.ActiveOrganizationID
 		orgMembershipRole, err = clerktools.ClerkRoleToMembershipRole(
@@ -103,7 +113,7 @@ func createAuthViewerContext(
 
 	user := viewer.Context{
 		Role:              role,
-		ID:                pulid.ID(customClaims.UserID),
+		ID:                pulid.ID(userID),
 		OrgID:             pulid.ID(orgID),
 		AccountID:         claims.Subject,
 		OrgAccountID:      orgAccountID,
@@ -222,6 +232,7 @@ func WriteClerkSessionClaimsFromLocalDB(
 func AuthenticateWithClerk(
 	loggedOutVC func(ctx context.Context) context.Context,
 	newContextFromBase func(ctx context.Context, base *viewer.Context) context.Context,
+	createUser func(ctx context.Context, accountID string) (*clerkhooks.UserPublicMetadata, error),
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -239,9 +250,11 @@ func AuthenticateWithClerk(
 			}
 
 			authContext := createAuthViewerContext(
+				ctx,
 				claims,
 				r.Header.Get("Vc-Override-Id"),
 				r.Header.Get("Vc-Override-Org-Id"),
+				createUser,
 			)
 
 			next.ServeHTTP(

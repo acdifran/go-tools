@@ -112,7 +112,7 @@ type userData struct {
 	} `json:"phone_numbers"`
 }
 
-type userPublicMetadata struct {
+type UserPublicMetadata struct {
 	UserID        string `json:"app_user_id"`
 	PersonalOrgID string `json:"app_personal_org_id"`
 	Role          string `json:"app_user_role"`
@@ -163,7 +163,6 @@ func (c *ClerkHook) isEmployeeEmail(email string) bool {
 func (c *ClerkHook) handleUserCreated(
 	ctx context.Context,
 	data []byte,
-	shouldCreatePersonalOrg bool,
 ) error {
 	var userData userData
 	if err := json.Unmarshal(data, &userData); err != nil {
@@ -203,15 +202,22 @@ func (c *ClerkHook) handleUserCreated(
 		return err
 	}
 
-	userID := string(user.ID)
-	role := lo.Ternary(isEmployee, "EMPLOYEE", "USER")
+	return UpdateCreatedUser(ctx, user.ID, userData.ID, isEmployee, user.PersonalOrgID)
+}
 
-	publicMetadata := &userPublicMetadata{UserID: userID, Role: role, PersonalOrgID: ""}
-	if shouldCreatePersonalOrg {
-		if user.PersonalOrgID == nil {
-			return fmt.Errorf("user %s does not have a personal org", user.ID)
-		}
-		publicMetadata.PersonalOrgID = string(*user.PersonalOrgID)
+func UpdateCreatedUser(
+	ctx context.Context,
+	userID pulid.ID,
+	AccountID string,
+	isEmployee bool,
+	personalOrgID *pulid.ID,
+) error {
+	role := lo.Ternary(isEmployee, "EMPLOYEE", "USER")
+	userIDstr := string(userID)
+
+	publicMetadata := &UserPublicMetadata{UserID: userIDstr, Role: role, PersonalOrgID: ""}
+	if personalOrgID != nil {
+		publicMetadata.PersonalOrgID = string(*personalOrgID)
 	}
 
 	publicMetadataJSON, err := json.Marshal(publicMetadata)
@@ -220,14 +226,13 @@ func (c *ClerkHook) handleUserCreated(
 	}
 
 	rawMessage := json.RawMessage(publicMetadataJSON)
-	_, err = clerkuser.Update(ctx, userData.ID, &clerkuser.UpdateParams{
-		ExternalID:     &userID,
+	_, err = clerkuser.Update(ctx, AccountID, &clerkuser.UpdateParams{
+		ExternalID:     &userIDstr,
 		PublicMetadata: &rawMessage,
 	})
 	if err != nil {
 		return fmt.Errorf("updating clerk user: %w", err)
 	}
-
 	return nil
 }
 
@@ -317,7 +322,7 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 		return nil, fmt.Errorf("creating user: %w", err)
 	}
 
-	publicMetadata := &userPublicMetadata{}
+	publicMetadata := &UserPublicMetadata{}
 	err = json.Unmarshal(clerkUser.PublicMetadata, publicMetadata)
 	if err != nil && publicMetadata.UserID == "" {
 		createdUserIDStr := string(createdUser.ID)
@@ -325,7 +330,7 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 		if personalOrgID != nil {
 			personalOrgIDstr = string(*personalOrgID)
 		}
-		publicMetadata := &userPublicMetadata{
+		publicMetadata := &UserPublicMetadata{
 			UserID:        createdUserIDStr,
 			Role:          "EMPLOYEE",
 			PersonalOrgID: personalOrgIDstr,
@@ -615,7 +620,7 @@ func (c *ClerkHook) HandleHooks(
 
 	switch event.Type {
 	case "user.created":
-		err = c.handleUserCreated(ctx, event.Data, c.shouldCreatePersonalOrg)
+		err = c.handleUserCreated(ctx, event.Data)
 	case "user.updated":
 		err = c.handleUserUpdated(ctx, event.Data)
 	case "organization.created":
