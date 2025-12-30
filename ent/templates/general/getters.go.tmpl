@@ -13,10 +13,22 @@
 	{{- /* Getters for all non-edge fields */}}
 	{{- range $f := .Fields }}
 		{{- if not $f.IsEdgeField }}
-			// Get{{ pascal $f.Name }} returns the {{ $f.Name }} field.
-			func ({{ $recv }} *{{ $name }}) Get{{ pascal $f.Name }}() {{ if $f.Nillable }}*{{ end }}{{ $f.Type }} {
-				return {{ $recv }}.{{ $f.StructField }}
-			}
+			{{- $fieldAnnotation := index $f.Annotations "FieldAnnotation" }}
+			{{- $customGetter := false }}
+			{{- if $fieldAnnotation }}
+				{{- $customGetter = $fieldAnnotation.CustomGetter }}
+			{{- end }}
+			{{- if $customGetter }}
+				// Get{{ pascal $f.Name }} returns the {{ $f.Name }} field.
+				func ({{ $recv }} *{{ $name }}) Get{{ pascal $f.Name }}({{- if $customGetter.WithContext }}ctx context.Context{{- end }}) {{ if $f.Nillable }}*{{ end }}{{ $f.Type }} {
+					return {{ $recv }}.get{{ pascal $f.Name }}Impl({{- if $customGetter.WithContext }}ctx{{- end }})
+				}
+			{{- else }}
+				// Get{{ pascal $f.Name }} returns the {{ $f.Name }} field.
+				func ({{ $recv }} *{{ $name }}) Get{{ pascal $f.Name }}() {{ if $f.Nillable }}*{{ end }}{{ $f.Type }} {
+					return {{ $recv }}.{{ $f.StructField }}
+				}
+			{{- end }}
 		{{- end }}
 	{{- end }}
 {{ end }}
