@@ -332,3 +332,30 @@ func SetManualViewer(
 func IsViewerOverrideSet(r *http.Request) bool {
 	return r.Header.Get("Vc-Override-Id") != ""
 }
+
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+
+		// Prevent MIME Sniffing
+		h.Set("X-Content-Type-Options", "nosniff")
+
+		// Anti-clickjacking (safe default: deny all iframe embedding)
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Content-Security-Policy", "frame-ancestors 'none';")
+
+		// Strict Transport Security (HTTPS only)
+		if r.TLS != nil {
+			// 1 year; includeSubDomains; production safe
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+
+		// Default: prevent caching of dynamic API responses
+		// (Static assets should be handled at CDN/CloudFront separately)
+		if h.Get("Cache-Control") == "" {
+			h.Set("Cache-Control", "no-store")
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
