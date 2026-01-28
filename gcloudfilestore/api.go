@@ -2,50 +2,17 @@ package gcloudfilestore
 
 import (
 	"fmt"
+	"github.com/acdifran/go-tools/filestoreoptions"
 	"net/url"
 	"time"
 
 	"cloud.google.com/go/storage"
 )
 
-type downloadOptions struct {
-	fileName    string
-	contentType string
-}
-
-type PresignConfig struct {
-	cacheDuration      *time.Duration
-	expirationDuration time.Duration
-	downloadOptions    *downloadOptions
-}
-
-type PresignOption func(*PresignConfig)
-
-func SetCacheDuration(duration time.Duration) PresignOption {
-	return func(c *PresignConfig) {
-		c.cacheDuration = &duration
-	}
-}
-
-func SetExpirationDuration(duration time.Duration) PresignOption {
-	return func(c *PresignConfig) {
-		c.expirationDuration = duration
-	}
-}
-
-func SetDownloadOptions(fileName string, contentType string) PresignOption {
-	return func(c *PresignConfig) {
-		c.downloadOptions = &downloadOptions{
-			fileName:    fileName,
-			contentType: contentType,
-		}
-	}
-}
-
-func (g *GCloudFileStore) processOptions(opts ...PresignOption) *PresignConfig {
-	config := &PresignConfig{
-		cacheDuration:      g.DefaultObjectCacheDuration,
-		expirationDuration: g.DefaultPresignExpirationDuration,
+func (g *GCloudFileStore) processOptions(opts ...filestoreoptions.PresignOption) *filestoreoptions.PresignConfig {
+	config := &filestoreoptions.PresignConfig{
+		CacheDuration:      g.DefaultObjectCacheDuration,
+		ExpirationDuration: g.DefaultPresignExpirationDuration,
 	}
 
 	for _, opt := range opts {
@@ -67,17 +34,17 @@ func asciiFallbackName(s string) string {
 	return string(out)
 }
 
-func (g *GCloudFileStore) PresignedGetUrl(key string, opts ...PresignOption) (string, error) {
+func (g *GCloudFileStore) PresignedGetUrl(key string, opts ...filestoreoptions.PresignOption) (string, error) {
 	config := g.processOptions(opts...)
 
 	signOpts := &storage.SignedURLOptions{
 		Method:  "GET",
-		Expires: time.Now().Add(config.expirationDuration),
+		Expires: time.Now().Add(config.ExpirationDuration),
 	}
 
-	if config.downloadOptions != nil {
-		fileName := config.downloadOptions.fileName
-		contentType := config.downloadOptions.contentType
+	if config.DownloadOptions != nil {
+		fileName := config.DownloadOptions.FileName
+		contentType := config.DownloadOptions.ContentType
 		asciiFallback := asciiFallbackName(fileName)
 		cd := fmt.Sprintf(`attachment; filename=%q; filename*=UTF-8''%s`,
 			asciiFallback, url.PathEscape(fileName))
@@ -98,18 +65,18 @@ func (g *GCloudFileStore) PresignedGetUrl(key string, opts ...PresignOption) (st
 
 func (g *GCloudFileStore) PresignedPutUrl(
 	key string,
-	opts ...PresignOption,
+	opts ...filestoreoptions.PresignOption,
 ) (string, error) {
 	config := g.processOptions(opts...)
 
 	signOpts := &storage.SignedURLOptions{
 		Method:  "PUT",
-		Expires: time.Now().Add(config.expirationDuration),
+		Expires: time.Now().Add(config.ExpirationDuration),
 	}
 
-	if config.cacheDuration != nil {
+	if config.CacheDuration != nil {
 		signOpts.Headers = []string{
-			fmt.Sprintf("Cache-Control:max-age=%d, must-revalidate", int(config.cacheDuration.Seconds())),
+			fmt.Sprintf("Cache-Control:max-age=%d, must-revalidate", int(config.CacheDuration.Seconds())),
 		}
 	}
 
