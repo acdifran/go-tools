@@ -70,8 +70,9 @@ func (g *GCloudFileStore) PresignedPutUrl(
 	config := g.processOptions(opts...)
 
 	signOpts := &storage.SignedURLOptions{
-		Method:  "PUT",
-		Expires: time.Now().Add(config.ExpirationDuration),
+		Method:      "PUT",
+		ContentType: "application/octet-stream",
+		Expires:     time.Now().Add(config.ExpirationDuration),
 	}
 
 	if config.CacheDuration != nil {
