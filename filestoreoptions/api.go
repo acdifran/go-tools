@@ -30,8 +30,8 @@ func SetExpirationDuration(duration time.Duration) PresignOption {
 func SetDownloadOptions(fileName string, contentType string) PresignOption {
 	return func(c *PresignConfig) {
 		c.DownloadOptions = &downloadOptions{
-			fileName:    fileName,
-			contentType: contentType,
+			FileName:    fileName,
+			ContentType: contentType,
 		}
 	}
 }
