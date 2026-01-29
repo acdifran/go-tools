@@ -44,6 +44,7 @@ func AddRequestLogging(next http.Handler) http.Handler {
 			http.Error(w, "can't read body", http.StatusBadRequest)
 			return
 		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
 
 		requestLogger := logger.Default().WithGroup("request").With(
 			slog.String("method", r.Method),
@@ -51,27 +52,27 @@ func AddRequestLogging(next http.Handler) http.Handler {
 			slog.String("remote_addr", r.RemoteAddr),
 			slog.String("user_agent", r.UserAgent()),
 			slog.String("referer", r.Referer()),
-			slog.Any("body", body),
+			slog.String("body", string(body)),
 		)
+
 		requestLogger.InfoContext(ctx, "Request Started")
+
 		crw := newCustomResponseWriter(w)
-		r.Body = io.NopCloser(bytes.NewBuffer(body))
-		next.ServeHTTP(
-			crw,
-			r.WithContext(ctx),
-		)
+		next.ServeHTTP(crw, r.WithContext(ctx))
+
 		if crw.statusCode >= 400 {
 			requestLogger.ErrorContext(
 				ctx,
-				crw.body.String(),
+				"Request Failed",
 				slog.Int("response_code", crw.statusCode),
+				slog.String("response_body", crw.body.String()),
 			)
 		}
-		endTime := time.Now()
+
 		requestLogger.InfoContext(
 			ctx,
 			"Request Finished",
-			slog.Int64("duration_ms", endTime.Sub(startTime).Milliseconds()),
+			slog.Int64("duration_ms", time.Since(startTime).Milliseconds()),
 			slog.Int("response_code", crw.statusCode),
 		)
 	})
