@@ -54,6 +54,7 @@ type CreateUserData struct {
 	IsEmployee              bool
 	PersonalOrgID           *pulid.ID
 	ExternalAccountProvider *string
+	Plan                    string
 	UserInputData
 }
 
