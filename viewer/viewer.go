@@ -31,6 +31,7 @@ type Context struct {
 	AccountID         string
 	OrgAccountID      string
 	OrgMembershipRole membershiprole.MembershipRole
+	SubscriptionPlan  string
 }
 
 func (v *Context) IsAnonymous() bool {

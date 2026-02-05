@@ -15,6 +15,7 @@ import (
 	"github.com/acdifran/go-tools/pulid"
 	"github.com/samber/lo"
 
+	"github.com/clerk/clerk-sdk-go/v2"
 	clerkorg "github.com/clerk/clerk-sdk-go/v2/organization"
 	clerkuser "github.com/clerk/clerk-sdk-go/v2/user"
 )
@@ -85,6 +86,11 @@ type AppClient interface {
 	UpdateMembership(
 		ctx context.Context,
 		data *CreateMembershipData,
+	) error
+	SetUserSubscriptionPlan(
+		ctx context.Context,
+		userID pulid.ID,
+		plan string,
 	) error
 }
 
@@ -595,6 +601,34 @@ func (c *ClerkHook) handleOrganizationMembershipDeleted(
 	return nil
 }
 
+func (c *ClerkHook) handleSubscriptionItemActive(
+	ctx context.Context,
+	data []byte,
+) error {
+	var subscriptionItem clerk.SubscriptionItem
+	if err := json.Unmarshal(data, &subscriptionItem); err != nil {
+		return err
+	}
+
+	userID := lo.FromPtr(subscriptionItem.Payer.UserID)
+	user, err := c.appClient.GetUserByAccountID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	err = c.appClient.SetUserSubscriptionPlan(ctx, user.ID, subscriptionItem.Plan.Slug)
+	if err != nil {
+		return fmt.Errorf(
+			"setting user %s subscription plan to %s: %w",
+			user.ID,
+			subscriptionItem.Plan.Slug,
+			err,
+		)
+	}
+
+	return nil
+}
+
 func (c *ClerkHook) HandleHooks(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -633,6 +667,8 @@ func (c *ClerkHook) HandleHooks(
 		err = c.handleOrganizationMembershipUpdated(ctx, event.Data)
 	case "organizationMembership.deleted":
 		err = c.handleOrganizationMembershipDeleted(ctx, event.Data)
+	case "subscriptionItem.active":
+		err = c.handleSubscriptionItemActive(ctx, event.Data)
 	default:
 		return fmt.Errorf("unhandled event type")
 	}

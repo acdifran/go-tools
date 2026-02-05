@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/acdifran/go-tools/clerkhooks"
 	"github.com/samber/lo"
@@ -53,6 +54,7 @@ type CustomClaims struct {
 	Role          string `json:"app_user_role"`
 	OrgID         string `json:"app_org_id"`
 	PersonalOrgID string `json:"app_personal_org_id"`
+	Plan          string `json:"pla"`
 }
 
 func createAuthViewerContext(
@@ -111,6 +113,16 @@ func createAuthViewerContext(
 		orgMembershipRole = membershiprole.Admin
 	}
 
+	plan := "free_user"
+	if role == viewer.Employee {
+		plan = "admin"
+	} else {
+		planParts := strings.Split(customClaims.Plan, ":")
+		if len(planParts) > 1 {
+			plan = planParts[1]
+		}
+	}
+
 	user := viewer.Context{
 		Role:              role,
 		ID:                pulid.ID(userID),
@@ -118,6 +130,7 @@ func createAuthViewerContext(
 		AccountID:         claims.Subject,
 		OrgAccountID:      orgAccountID,
 		OrgMembershipRole: orgMembershipRole,
+		SubscriptionPlan:  plan,
 	}
 
 	if user.Role == viewer.Employee && vcOverrideID != "" {
@@ -128,6 +141,7 @@ func createAuthViewerContext(
 			OrgAccountID:      "",
 			OrgMembershipRole: membershiprole.Admin,
 			Role:              viewer.Employee,
+			SubscriptionPlan:  "admin",
 		}
 	}
 
@@ -173,6 +187,7 @@ func getOrCreateUserAndWriteCustomClaims(
 			Role:          "EMPLOYEE",
 			OrgID:         string(org.ID),
 			PersonalOrgID: "",
+			Plan:          "admin",
 		}
 
 		claims.Custom = customClaims
@@ -191,6 +206,7 @@ func getOrCreateUserAndWriteCustomClaims(
 		Role:          "EMPLOYEE",
 		OrgID:         "",
 		PersonalOrgID: string(org.ID),
+		Plan:          "admin",
 	}
 	claims.Custom = customClaims
 	return claims, nil
@@ -320,6 +336,7 @@ func SetManualViewer(
 				OrgAccountID:      "",
 				OrgMembershipRole: membershiprole.Admin,
 				Role:              viewer.Employee,
+				SubscriptionPlan:  "admin",
 			}
 			next.ServeHTTP(
 				w,
