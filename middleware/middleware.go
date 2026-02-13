@@ -114,13 +114,9 @@ func createAuthViewerContext(
 	}
 
 	plan := "free_user"
-	if role == viewer.Employee {
-		plan = "admin"
-	} else {
-		planParts := strings.Split(customClaims.Plan, ":")
-		if len(planParts) > 1 {
-			plan = planParts[1]
-		}
+	planParts := strings.Split(customClaims.Plan, ":")
+	if len(planParts) > 1 {
+		plan = planParts[1]
 	}
 
 	user := viewer.Context{
@@ -141,7 +137,7 @@ func createAuthViewerContext(
 			OrgAccountID:      "",
 			OrgMembershipRole: membershiprole.Admin,
 			Role:              viewer.Employee,
-			SubscriptionPlan:  "admin",
+			SubscriptionPlan:  "free_user",
 		}
 	}
 
@@ -187,7 +183,7 @@ func getOrCreateUserAndWriteCustomClaims(
 			Role:          "EMPLOYEE",
 			OrgID:         string(org.ID),
 			PersonalOrgID: "",
-			Plan:          "admin",
+			Plan:          "free_user",
 		}
 
 		claims.Custom = customClaims
@@ -206,7 +202,7 @@ func getOrCreateUserAndWriteCustomClaims(
 		Role:          "EMPLOYEE",
 		OrgID:         "",
 		PersonalOrgID: string(org.ID),
-		Plan:          "admin",
+		Plan:          "free_user",
 	}
 	claims.Custom = customClaims
 	return claims, nil
@@ -336,7 +332,7 @@ func SetManualViewer(
 				OrgAccountID:      "",
 				OrgMembershipRole: membershiprole.Admin,
 				Role:              viewer.Employee,
-				SubscriptionPlan:  "admin",
+				SubscriptionPlan:  "free_user",
 			}
 			next.ServeHTTP(
 				w,

@@ -78,6 +78,10 @@ func (v *Context) IsEmployee() bool {
 	return v.Role == Employee
 }
 
+func (v *Context) HasPlan(plan string) bool {
+	return v.SubscriptionPlan == plan
+}
+
 func AllPowerfulContext() *Context {
 	return &Context{Role: AllPowerful}
 }
