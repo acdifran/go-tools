@@ -6,7 +6,6 @@ package {{ $pkg  }}
 
 type MaybeTx interface {
 	Tx() (*{{$.Annotations.EntName}}.Tx, error)
-	Client() *{{$.Annotations.EntName}}.Client
 }
 
 func RunOnCompletion(ctx context.Context, m MaybeTx, fn func()) {
