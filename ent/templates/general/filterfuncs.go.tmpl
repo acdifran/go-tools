@@ -1,0 +1,28 @@
+{{ define "privacy/additional/filterfuncs" }}
+
+{{- range $node := $.Nodes }}
+
+// {{ $node.Name }}FilterFunc applies a typed filter to {{ $node.Name }} queries and mutations.
+type {{ $node.Name }}FilterFunc func(context.Context, *{{$.Annotations.EntName}}.{{ $node.Name }}Filter) error
+
+// EvalQuery calls f(ctx, q.Filter()) for *{{$.Annotations.EntName}}.{{ $node.Name }}Query.
+func (f {{ $node.Name }}FilterFunc) EvalQuery(ctx context.Context, q {{$.Annotations.EntName}}.Query) error {
+	{{ $node.Receiver }}q, ok := q.(*{{$.Annotations.EntName}}.{{ $node.Name }}Query)
+	if !ok {
+		return Denyf("{{$.Annotations.EntName}}/privacy: unexpected query type %T, expect *{{$.Annotations.EntName}}.{{ $node.Name }}Query", q)
+	}
+	return f(ctx, {{ $node.Receiver }}q.Filter())
+}
+
+// EvalMutation calls f(ctx, m.Filter()) for *{{$.Annotations.EntName}}.{{ $node.Name }}Mutation.
+func (f {{ $node.Name }}FilterFunc) EvalMutation(ctx context.Context, m {{$.Annotations.EntName}}.Mutation) error {
+	{{ $node.Receiver }}m, ok := m.(*{{$.Annotations.EntName}}.{{ $node.Name }}Mutation)
+	if !ok {
+		return Denyf("{{$.Annotations.EntName}}/privacy: unexpected mutation type %T, expect *{{$.Annotations.EntName}}.{{ $node.Name }}Mutation", m)
+	}
+	return f(ctx, {{ $node.Receiver }}m.Filter())
+}
+
+{{- end }}
+
+{{ end }}

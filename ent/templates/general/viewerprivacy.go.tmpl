@@ -251,4 +251,15 @@ func FilterByViewerIsUserRule() privacy.QueryMutationRule {
 	})
 }
 
+func UserFilterByIsViewerRule() privacy.QueryMutationRule {
+	return privacy.UserFilterFunc(func(ctx context.Context, f *{{$.Annotations.EntName}}.UserFilter) error {
+		vc := viewer.FromContext(ctx)
+		if vc.IsAnonymous() {
+			return privacy.Denyf("viewer is anonymous")
+		}
+		f.WhereID(entql.StringEQ(string(vc.ID)))
+		return privacy.Skip
+	})
+}
+
 {{ end }}
