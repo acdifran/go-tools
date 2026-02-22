@@ -107,16 +107,16 @@ func createAuthViewerContext(
 
 	role := lo.Ternary(customClaims.Role == "EMPLOYEE", viewer.Employee, viewer.User)
 
-	if orgID == "" && customClaims.PersonalOrgID != "" {
-		orgID = customClaims.PersonalOrgID
-		orgAccountID = claims.Subject
-		orgMembershipRole = membershiprole.Admin
-	}
-
 	plan := lo.Ternary(orgID == "", "free_user", "free_org")
 	planParts := strings.Split(customClaims.Plan, ":")
 	if len(planParts) > 1 {
 		plan = planParts[1]
+	}
+
+	if orgID == "" && customClaims.PersonalOrgID != "" {
+		orgID = customClaims.PersonalOrgID
+		orgAccountID = claims.Subject
+		orgMembershipRole = membershiprole.Admin
 	}
 
 	user := viewer.Context{

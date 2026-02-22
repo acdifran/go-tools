@@ -62,6 +62,7 @@ type CreateOrgData struct {
 	UserID       pulid.ID
 	OrgID        *pulid.ID
 	OrgAccountID string
+	Plan         string
 	OrgInputData
 }
 
