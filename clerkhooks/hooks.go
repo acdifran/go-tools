@@ -636,10 +636,10 @@ func (c *ClerkHook) handleSubscriptionItemActive(
 	}
 
 	orgID := subscriptionItem.Payer.OrganizationID
-	if orgID != nil {
+	if orgID != nil && *orgID != "" {
 		org, err := c.appClient.GetOrgByAccountID(ctx, *orgID)
 		if err != nil {
-			return err
+			return fmt.Errorf("getting org by ID: %w, orgId: %s", err, orgID)
 		}
 
 		err = c.appClient.SetOrgSubscriptionPlan(ctx, org.ID, subscriptionItem.Plan.Slug)
