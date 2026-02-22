@@ -619,9 +619,14 @@ func (c *ClerkHook) handleSubscriptionItemActive(
 
 	userID := subscriptionItem.Payer.UserID
 	if userID != nil {
-		user, err := c.appClient.GetUserByAccountID(ctx, *userID)
+		user, err := c.appClient.GetUserByAccountIDOrNil(ctx, *userID)
 		if err != nil {
 			return err
+		}
+
+		if user == nil {
+			logger.WarnContext(ctx, "User not found when handling subscription item active", "userID", *userID)
+			return nil
 		}
 
 		err = c.appClient.SetUserSubscriptionPlan(ctx, user.ID, subscriptionItem.Plan.Slug)
