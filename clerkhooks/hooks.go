@@ -93,6 +93,11 @@ type AppClient interface {
 		userID pulid.ID,
 		plan string,
 	) error
+	SetOrgSubscriptionPlan(
+		ctx context.Context,
+		orgID pulid.ID,
+		plan string,
+	) error
 }
 
 type webhookEvent struct {
@@ -611,20 +616,40 @@ func (c *ClerkHook) handleSubscriptionItemActive(
 		return err
 	}
 
-	userID := lo.FromPtr(subscriptionItem.Payer.UserID)
-	user, err := c.appClient.GetUserByAccountID(ctx, userID)
-	if err != nil {
-		return err
+	userID := subscriptionItem.Payer.UserID
+	if userID != nil {
+		user, err := c.appClient.GetUserByAccountID(ctx, *userID)
+		if err != nil {
+			return err
+		}
+
+		err = c.appClient.SetUserSubscriptionPlan(ctx, user.ID, subscriptionItem.Plan.Slug)
+		if err != nil {
+			return fmt.Errorf(
+				"setting user %s subscription plan to %s: %w",
+				user.ID,
+				subscriptionItem.Plan.Slug,
+				err,
+			)
+		}
 	}
 
-	err = c.appClient.SetUserSubscriptionPlan(ctx, user.ID, subscriptionItem.Plan.Slug)
-	if err != nil {
-		return fmt.Errorf(
-			"setting user %s subscription plan to %s: %w",
-			user.ID,
-			subscriptionItem.Plan.Slug,
-			err,
-		)
+	orgID := subscriptionItem.Payer.OrganizationID
+	if orgID != nil {
+		org, err := c.appClient.GetOrgByAccountID(ctx, *orgID)
+		if err != nil {
+			return err
+		}
+
+		err = c.appClient.SetOrgSubscriptionPlan(ctx, org.ID, subscriptionItem.Plan.Slug)
+		if err != nil {
+			return fmt.Errorf(
+				"setting org %s subscription plan to %s: %w",
+				org.ID,
+				subscriptionItem.Plan.Slug,
+				err,
+			)
+		}
 	}
 
 	return nil

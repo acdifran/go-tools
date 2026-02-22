@@ -82,14 +82,17 @@ func (v *Context) HasPlan(plan string) bool {
 	return v.SubscriptionPlan == plan
 }
 
+//nolint:exhaustruct
 func AllPowerfulContext() *Context {
 	return &Context{Role: AllPowerful}
 }
 
+//nolint:exhaustruct
 func OmniContext() *Context {
 	return &Context{Role: Omni}
 }
 
+//nolint:exhaustruct
 func LoggedOutContext() *Context {
 	return &Context{Role: LoggedOut}
 }
