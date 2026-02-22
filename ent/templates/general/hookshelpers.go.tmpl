@@ -8,7 +8,7 @@ type MaybeTx interface {
 	Tx() (*{{$.Annotations.EntName}}.Tx, error)
 }
 
-func RunOnCompletion(ctx context.Context, m MaybeTx, fn func(cxt context.Context)) {
+func RunOnCompletion(newCtx context.Context, m MaybeTx, fn func(cxt context.Context)) {
 	if tx, err := m.Tx(); err == nil {
 		tx.OnCommit(
 			func(next {{$.Annotations.EntName}}.Committer) {{$.Annotations.EntName}}.Committer {
@@ -21,13 +21,13 @@ func RunOnCompletion(ctx context.Context, m MaybeTx, fn func(cxt context.Context
 						)
 						return err
 					}
-					fn(ctx)
+					fn(newCtx)
 					return nil
 				})
 			},
 		)
 	} else {
-		fn(ctx)
+		fn(newCtx)
 	}
 }
 
