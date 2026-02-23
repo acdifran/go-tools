@@ -644,10 +644,10 @@ func (c *ClerkHook) handleSubscriptionItemActive(
 	}
 
 	userID := subscriptionItem.Payer.UserID
-	if userID != nil {
+	if userID != nil && *userID != "" {
 		user, err := c.appClient.GetUserByAccountIDOrNil(ctx, *userID)
 		if err != nil {
-			return err
+			return fmt.Errorf("getting user with ID %s: %w", *userID, err)
 		}
 
 		if user == nil {
@@ -672,10 +672,10 @@ func (c *ClerkHook) handleSubscriptionItemActive(
 	}
 
 	orgID := subscriptionItem.Payer.OrganizationID
-	if orgID != nil {
+	if orgID != nil && *orgID != "" {
 		org, err := c.appClient.GetOrgByAccountID(ctx, *orgID)
 		if err != nil {
-			return err
+			return fmt.Errorf("getting org with ID %s: %w", *orgID, err)
 		}
 
 		err = c.appClient.SetOrgSubscriptionPlan(ctx, org.ID, subscriptionItem.Plan.Slug)
