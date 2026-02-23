@@ -16,6 +16,7 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/clerk/clerk-sdk-go/v2"
+	clerkbilling "github.com/clerk/clerk-sdk-go/v2/billing"
 	clerkorg "github.com/clerk/clerk-sdk-go/v2/organization"
 	clerkuser "github.com/clerk/clerk-sdk-go/v2/user"
 )
@@ -182,6 +183,14 @@ func (c *ClerkHook) handleUserCreated(
 		return fmt.Errorf("reading UserData: %w", err)
 	}
 
+	existingUser, err := c.appClient.GetUserByAccountIDOrNil(ctx, userData.ID)
+	if err != nil {
+		return fmt.Errorf("checking for existing user with accountID %s: %w", userData.ID, err)
+	}
+	if existingUser != nil {
+		return nil
+	}
+
 	isEmployee := false
 	for _, email := range userData.EmailAddresses {
 		if c.isEmployeeEmail(email.EmailAddress) {
@@ -195,6 +204,19 @@ func (c *ClerkHook) handleUserCreated(
 	externalAccountProvider := lo.EmptyableToPtr(
 		lo.FirstOrEmpty(userData.ExternalAccounts).Provider,
 	)
+
+	plans, err := clerkbilling.ListSubscriptionItems(
+		ctx,
+		&clerkbilling.ListSubscriptionItemsParams{UserID: &userData.ID, Status: lo.ToPtr("active")},
+	)
+	if err != nil {
+		return fmt.Errorf("listing subscription items: %w", err)
+	}
+
+	plan := "free_user"
+	if len(plans.Data) > 0 {
+		plan = plans.Data[0].Plan.Slug
+	}
 
 	user, err := c.appClient.CreateUser(ctx, &CreateUserData{
 		AccountID:  userData.ID,
@@ -210,6 +232,7 @@ func (c *ClerkHook) handleUserCreated(
 		PersonalOrgID:           nil,
 		UserID:                  nil,
 		ExternalAccountProvider: externalAccountProvider,
+		Plan:                    plan,
 	})
 	if err != nil {
 		return err
@@ -330,6 +353,7 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 		PersonalOrgID:           personalOrgID,
 		IsEmployee:              isEmployee,
 		ExternalAccountProvider: provider,
+		Plan:                    "free_user",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)
@@ -403,6 +427,7 @@ func (c *ClerkHook) GetOrCreateOrgByAccountID(
 			Name:     clerkOrg.Name,
 			ImageURL: clerkOrg.ImageURL,
 		},
+		Plan: "free_org",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating org: %w", err)
@@ -462,6 +487,7 @@ func (c *ClerkHook) handleOrganizationCreated(ctx context.Context, data []byte) 
 			ImageURL: orgData.ImageURL,
 		},
 		OrgID: nil,
+		Plan:  "free_org",
 	})
 	if err != nil {
 		return err
