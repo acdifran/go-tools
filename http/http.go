@@ -20,7 +20,7 @@ const (
 type Server struct {
 	addr            string
 	handler         http.Handler
-	logger          logger.Logger
+	logger          *logger.Logger
 	shutdownTimeout time.Duration
 }
 
@@ -32,7 +32,7 @@ func WithTimeout(timeout time.Duration) ServerOption {
 	}
 }
 
-func WithLogger(logger logger.Logger) ServerOption {
+func WithLogger(logger *logger.Logger) ServerOption {
 	return func(s *Server) {
 		s.logger = logger
 	}
@@ -46,7 +46,7 @@ func NewServer(
 	server := &Server{
 		addr:            addr,
 		handler:         handler,
-		logger:          *logger.Default(),
+		logger:          logger.Default(),
 		shutdownTimeout: 30 * time.Second,
 	}
 
