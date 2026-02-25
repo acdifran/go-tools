@@ -83,30 +83,30 @@ func (v *Context) HasPlan(plan string) bool {
 }
 
 //nolint:exhaustruct
-func AllPowerfulContext() *Context {
+func AllPowerfulVC() *Context {
 	return &Context{Role: AllPowerful}
 }
 
 //nolint:exhaustruct
-func OmniContext() *Context {
+func OmniVC() *Context {
 	return &Context{Role: Omni}
 }
 
 //nolint:exhaustruct
-func LoggedOutContext() *Context {
+func LoggedOutVC() *Context {
 	return &Context{Role: LoggedOut}
 }
 
-func AllPowerfulVC(parent context.Context) context.Context {
-	return NewContext(parent, AllPowerfulContext())
+func AllPowerfulContext(parent context.Context) context.Context {
+	return NewContext(parent, AllPowerfulVC())
 }
 
-func OmniVC(parent context.Context) context.Context {
-	return NewContext(parent, OmniContext())
+func OmniContext(parent context.Context) context.Context {
+	return NewContext(parent, OmniVC())
 }
 
-func LoggedOutVC(parent context.Context) context.Context {
-	return NewContext(parent, LoggedOutContext())
+func LoggedOutContext(parent context.Context) context.Context {
+	return NewContext(parent, LoggedOutVC())
 }
 
 type CtxKey struct{}
@@ -116,8 +116,15 @@ func (c *Context) GetBaseContext() *Context {
 }
 
 func FromContext(ctx context.Context) *Context {
-	v, _ := ctx.Value(CtxKey{}).(Viewer)
-	return v.GetBaseContext()
+	v, ok := ctx.Value(CtxKey{}).(Viewer)
+	if !ok || v == nil {
+		return LoggedOutVC()
+	}
+	baseCtx := v.GetBaseContext()
+	if baseCtx == nil {
+		return LoggedOutVC()
+	}
+	return baseCtx
 }
 
 func NewContext(parent context.Context, v *Context) context.Context {

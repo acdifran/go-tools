@@ -10,16 +10,14 @@ import (
 )
 
 func WebsocketInit(
-	loggedOutVC func(ctx context.Context) context.Context,
-	newContextFromBase func(ctx context.Context, base *viewer.Context) context.Context,
-	createUser func(ctx context.Context, accountID string) (*clerkhooks.UserPublicMetadata, error),
+	clerkhook *clerkhooks.ClerkHook,
 ) transport.WebsocketInitFunc {
 	return func(
 		ctx context.Context,
 		initPayload transport.InitPayload,
 	) (context.Context, *transport.InitPayload, error) {
 		token := initPayload.Authorization()
-		loggedOut := loggedOutVC(ctx)
+		loggedOut := viewer.LoggedOutContext(ctx)
 
 		if token == "" {
 			return loggedOut, &initPayload, nil
@@ -40,9 +38,9 @@ func WebsocketInit(
 			claims,
 			"",
 			"",
-			createUser,
+			clerkhook,
 		)
 
-		return newContextFromBase(ctx, authContext), &initPayload, nil
+		return viewer.NewContext(ctx, authContext), &initPayload, nil
 	}
 }

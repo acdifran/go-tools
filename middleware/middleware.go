@@ -62,20 +62,20 @@ func createAuthViewerContext(
 	claims *clerk.SessionClaims,
 	vcOverrideID string,
 	vcOverrideOrgID string,
-	createUser func(ctx context.Context, accountID string) (*clerkhooks.UserPublicMetadata, error),
+	clerkHook *clerkhooks.ClerkHook,
 ) *viewer.Context {
 	customClaims, ok := claims.Custom.(*CustomClaims)
 	if !ok {
 		slog.Error("missing custom claims", "subject", claims.Subject)
-		return viewer.LoggedOutContext()
+		return viewer.LoggedOutVC()
 	}
 
 	if customClaims.UserID == "" {
 		slog.Info("missing user ID in claims, creating user", "subject", claims.Subject)
-		userData, err := createUser(ctx, claims.Subject)
+		userData, err := clerkHook.CreateNewUserFromClerkUser(ctx, claims.Subject)
 		if err != nil {
 			slog.Error("creating user", "error", err)
-			return viewer.LoggedOutContext()
+			return viewer.LoggedOutVC()
 		}
 		customClaims.UserID = userData.UserID
 		customClaims.PersonalOrgID = userData.PersonalOrgID
@@ -101,7 +101,7 @@ func createAuthViewerContext(
 				"error",
 				err,
 			)
-			return viewer.LoggedOutContext()
+			return viewer.LoggedOutVC()
 		}
 	}
 
@@ -210,7 +210,6 @@ func getOrCreateUserAndWriteCustomClaims(
 
 func WriteClerkSessionClaimsFromLocalDB(
 	hook *clerkhooks.ClerkHook,
-	toApCtx func(ctx context.Context) context.Context,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -222,7 +221,7 @@ func WriteClerkSessionClaimsFromLocalDB(
 				return
 			}
 
-			apCtx := toApCtx(ctx)
+			apCtx := viewer.AllPowerfulContext(ctx)
 			var err error
 			claims, err = getOrCreateUserAndWriteCustomClaims(
 				apCtx,
@@ -242,9 +241,7 @@ func WriteClerkSessionClaimsFromLocalDB(
 }
 
 func AuthenticateWithClerk(
-	loggedOutVC func(ctx context.Context) context.Context,
-	newContextFromBase func(ctx context.Context, base *viewer.Context) context.Context,
-	createUser func(ctx context.Context, accountID string) (*clerkhooks.UserPublicMetadata, error),
+	clerkHook *clerkhooks.ClerkHook,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -257,7 +254,7 @@ func AuthenticateWithClerk(
 
 			claims, ok := clerk.SessionClaimsFromContext(ctx)
 			if !ok || claims == nil {
-				next.ServeHTTP(w, r.WithContext(loggedOutVC(ctx)))
+				next.ServeHTTP(w, r.WithContext(viewer.LoggedOutContext(ctx)))
 				return
 			}
 
@@ -266,12 +263,12 @@ func AuthenticateWithClerk(
 				claims,
 				r.Header.Get("Vc-Override-Id"),
 				r.Header.Get("Vc-Override-Org-Id"),
-				createUser,
+				clerkHook,
 			)
 
 			next.ServeHTTP(
 				w,
-				r.WithContext(newContextFromBase(ctx, authContext)),
+				r.WithContext(viewer.NewContext(ctx, authContext)),
 			)
 		})
 	}

@@ -174,6 +174,90 @@ func (c *ClerkHook) isEmployeeEmail(email string) bool {
 		strings.HasSuffix(email, fmt.Sprintf("@%s", c.employeeEmailConfig.domain))
 }
 
+func (c *ClerkHook) CreateNewUserFromClerkUser(
+	ctx context.Context,
+	accountID string,
+) (*UserPublicMetadata, error) {
+	clerkUser, err := clerkuser.Get(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("getting clerk user: %w", err)
+	}
+
+	emailAddress := lo.EmptyableToPtr(
+		lo.FirstOr(clerkUser.EmailAddresses, &clerk.EmailAddress{}).EmailAddress,
+	)
+	phone := lo.EmptyableToPtr(
+		lo.FirstOr(clerkUser.PhoneNumbers, &clerk.PhoneNumber{}).PhoneNumber,
+	)
+	externalAccountProvider := lo.EmptyableToPtr(
+		lo.FirstOr(clerkUser.ExternalAccounts, &clerk.ExternalAccount{}).Provider,
+	)
+
+	if emailAddress == nil && externalAccountProvider == nil {
+		return nil, fmt.Errorf("clerk user has no email address or external account provider")
+	}
+
+	plans, err := clerkbilling.ListSubscriptionItems(
+		ctx,
+		&clerkbilling.ListSubscriptionItemsParams{
+			UserID: &accountID,
+			Status: lo.ToPtr("active"),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing subscription items: %w", err)
+	}
+
+	plan := "free_user"
+	if len(plans.Data) > 0 {
+		plan = plans.Data[0].Plan.Slug
+	}
+
+	isEmployee := c.isEmployeeEmail(lo.FromPtr(emailAddress))
+	user, err := c.appClient.CreateUser(ctx, &CreateUserData{
+		AccountID:  accountID,
+		IsEmployee: isEmployee,
+		UserInputData: UserInputData{
+			FirstName:    clerkUser.FirstName,
+			LastName:     clerkUser.LastName,
+			Username:     clerkUser.Username,
+			ImageURL:     clerkUser.ImageURL,
+			EmailAddress: emailAddress,
+			Phone:        phone,
+		},
+		PersonalOrgID:           nil,
+		UserID:                  nil,
+		ExternalAccountProvider: externalAccountProvider,
+		Plan:                    plan,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating user: %w", err)
+	}
+
+	err = UpdateCreatedUser(
+		ctx,
+		user.ID,
+		accountID,
+		isEmployee,
+		user.PersonalOrgID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("updating clerk user: %w", err)
+	}
+
+	role := lo.Ternary(isEmployee, "EMPLOYEE", "USER")
+	personalOrgID := ""
+	if user.PersonalOrgID != nil {
+		personalOrgID = string(*user.PersonalOrgID)
+	}
+
+	return &UserPublicMetadata{
+		UserID:        string(user.ID),
+		Role:          role,
+		PersonalOrgID: personalOrgID,
+	}, nil
+}
+
 func (c *ClerkHook) handleUserCreated(
 	ctx context.Context,
 	data []byte,
