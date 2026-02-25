@@ -6,28 +6,46 @@ package {{ $pkg  }}
 
 type MaybeTx interface {
 	Tx() (*{{$.Annotations.EntName}}.Tx, error)
+	// Do NOT use this client for Ent operations if you are possibly within a txn
+	// use ent.FromContext(ctx) instead
+	Client() *{{$.Annotations.EntName}}.Client
 }
 
-func RunOnCompletion(newCtx context.Context, m MaybeTx, fn func(cxt context.Context)) {
+type hasBackgroundRunner interface {
+	RunBackgroundTask(ctx context.Context, fn func(context.Context), opts ...background.TaskOption)
+}
+
+func run(ctx context.Context, client *{{$.Annotations.EntName}}.Client, fn func(ctx context.Context), opts ...background.TaskOption) {
+	if c, ok := any(client).(hasBackgroundRunner); ok {
+		c.RunBackgroundTask(ctx, fn, opts...)
+		return
+	}
+
+	background.New().GoWithCtx(ctx, fn, opts...)
+	return
+}
+
+func RunOnCompletion(reqCtx context.Context, m MaybeTx, fn func(ctx context.Context), opts ...background.TaskOption) {
+	client := m.Client()
 	if tx, err := m.Tx(); err == nil {
 		tx.OnCommit(
 			func(next {{$.Annotations.EntName}}.Committer) {{$.Annotations.EntName}}.Committer {
-				return {{$.Annotations.EntName}}.CommitFunc(func(ctx context.Context, tx *{{$.Annotations.EntName}}.Tx) error {
-					err := next.Commit(ctx, tx)
+				return {{$.Annotations.EntName}}.CommitFunc(func(mctx context.Context, tx *{{$.Annotations.EntName}}.Tx) error {
+					err := next.Commit(mctx, tx)
 					if err != nil {
-						slog.ErrorContext(ctx,
+						slog.ErrorContext(mctx,
 							"error commiting tx before running on completion",
 							"error", err,
 						)
 						return err
 					}
-					fn(newCtx)
+					run(reqCtx, client, fn, opts...)
 					return nil
 				})
 			},
 		)
 	} else {
-		fn(newCtx)
+		run(reqCtx, client, fn, opts...)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/acdifran/go-tools/background"
 	"github.com/acdifran/go-tools/logger"
 )
 
@@ -22,6 +23,7 @@ type Server struct {
 	handler         http.Handler
 	logger          *logger.Logger
 	shutdownTimeout time.Duration
+	bgRunner        *background.Runner
 }
 
 type ServerOption func(*Server)
@@ -38,6 +40,12 @@ func WithLogger(logger *logger.Logger) ServerOption {
 	}
 }
 
+func WithBackgroundRunner(runner *background.Runner) ServerOption {
+	return func(s *Server) {
+		s.bgRunner = runner
+	}
+}
+
 func NewServer(
 	addr string,
 	handler http.Handler,
@@ -48,6 +56,7 @@ func NewServer(
 		handler:         handler,
 		logger:          logger.Default(),
 		shutdownTimeout: 30 * time.Second,
+		bgRunner:        background.New(),
 	}
 
 	for _, opt := range opts {
@@ -97,6 +106,12 @@ func (s *Server) Start() error {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			_ = srv.Close() // forced stop if graceful shutdown timed out/failed
 			return fmt.Errorf("graceful shutdown failed: %w", err)
+		}
+
+		if s.bgRunner != nil {
+			logger.Info("Waiting for background tasks to finish")
+			s.bgRunner.Shutdown()
+			logger.Info("Background tasks finished")
 		}
 
 		// Ensure server goroutine exits cleanly.
