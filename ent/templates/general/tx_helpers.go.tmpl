@@ -69,8 +69,12 @@ func WithTx[T Unwrappable[T]](
 	defer func() {
 		if v := recover(); v != nil {
 			rbErr := tx.Rollback()
-			err := fmt.Errorf("error rolling back transaction: %v", rbErr)
-			slog.ErrorContext(ctx, err.Error())
+			if rbErr != nil {
+				slog.ErrorContext(ctx,
+					"error rolling back transaction",
+					"error", rbErr,
+				)
+			}
 			panic(v)
 		}
 	}()
