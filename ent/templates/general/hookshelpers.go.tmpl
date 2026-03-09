@@ -6,27 +6,31 @@ package {{ $pkg  }}
 
 type MaybeTx interface {
 	Tx() (*{{$.Annotations.EntName}}.Tx, error)
-	// Do NOT use this client for Ent operations if you are possibly within a txn
-	// use ent.FromContext(ctx) instead
-	Client() *{{$.Annotations.EntName}}.Client
 }
 
 type hasBackgroundRunner interface {
 	RunBackgroundTask(ctx context.Context, fn func(context.Context), opts ...background.TaskOption)
 }
 
-func run(ctx context.Context, client *{{$.Annotations.EntName}}.Client, fn func(ctx context.Context), opts ...background.TaskOption) {
+func run(ctx context.Context, client *{{$.Annotations.EntName}}.Client, fn func(ctx context.Context, client *{{$.Annotations.EntName}}.Client), opts ...background.TaskOption) {
+	wrapped := func(ctx context.Context) { fn(ctx, client) }
 	if c, ok := any(client).(hasBackgroundRunner); ok {
-		c.RunBackgroundTask(ctx, fn, opts...)
+		c.RunBackgroundTask(ctx, wrapped, opts...)
 		return
 	}
 
-	background.New().GoWithCtx(ctx, fn, opts...)
+	background.New().GoWithCtx(ctx, wrapped, opts...)
 	return
 }
 
-func RunOnCompletion(reqCtx context.Context, m MaybeTx, fn func(ctx context.Context), opts ...background.TaskOption) {
-	client := m.Client()
+// RunOnCompletion runs a function after the completion of a transaction if the current mutation is part of a transaction.
+// If no transaction exists, it runs the function immediately.
+// The function is run within a background task so the request can return immediately.
+//
+// IMPORTANT NOTE: You must always refetch any ents with the client provided in the function, as any ents from the
+// original mutation will have a closed connection if run within a transaction.
+func RunOnCompletion(reqCtx context.Context, m MaybeTx, fn func(ctx context.Context, client *{{$.Annotations.EntName}}.Client), opts ...background.TaskOption) {
+	client := {{$.Annotations.EntName}}.FromContext(reqCtx)
 	if tx, err := m.Tx(); err == nil {
 		tx.OnCommit(
 			func(next {{$.Annotations.EntName}}.Committer) {{$.Annotations.EntName}}.Committer {
