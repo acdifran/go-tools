@@ -72,7 +72,10 @@ func createAuthViewerContext(
 
 	if customClaims.UserID == "" {
 		slog.Info("missing user ID in claims, creating user", "subject", claims.Subject)
-		userData, err := clerkHook.CreateNewUserFromClerkUser(viewer.AllPowerfulContext(ctx), claims.Subject)
+		userData, err := clerkHook.CreateNewUserFromClerkUser(
+			viewer.AllPowerfulContext(ctx),
+			claims.Subject,
+		)
 		if err != nil {
 			slog.Error("creating user", "error", err)
 			return viewer.LoggedOutVC()
