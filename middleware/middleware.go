@@ -110,7 +110,7 @@ func createAuthViewerContext(
 
 	role := lo.Ternary(customClaims.Role == "EMPLOYEE", viewer.Employee, viewer.User)
 
-	plan := lo.Ternary(orgAccountID == "", "free_user", "free_org")
+	plan := lo.Ternary(claims.ActiveOrganizationID == "", "free_user", "free_org")
 	planParts := strings.Split(customClaims.Plan, ":")
 	if len(planParts) > 1 {
 		plan = planParts[1]
