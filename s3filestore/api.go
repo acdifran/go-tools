@@ -92,3 +92,15 @@ func (s *S3FileStore) PresignedPutUrl(
 
 	return resp.URL, nil
 }
+
+func (s *S3FileStore) DeleteObject(ctx context.Context, key string) error {
+	_, err := s.Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.BucketName),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("deleting object %q: %w", key, err)
+	}
+
+	return nil
+}

@@ -1,6 +1,7 @@
 package gcloudfilestore
 
 import (
+	"context"
 	"fmt"
 	"github.com/acdifran/go-tools/filestoreoptions"
 	"net/url"
@@ -87,4 +88,13 @@ func (g *GCloudFileStore) PresignedPutUrl(
 	}
 
 	return signedURL, nil
+}
+
+func (g *GCloudFileStore) DeleteObject(ctx context.Context, key string) error {
+	err := g.Client.Bucket(g.BucketName).Object(key).Delete(ctx)
+	if err != nil {
+		return fmt.Errorf("deleting object %q: %w", key, err)
+	}
+
+	return nil
 }
