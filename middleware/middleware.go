@@ -80,8 +80,8 @@ func createAuthViewerContext(
 			slog.Error("creating user", "error", err)
 			return viewer.LoggedOutVC()
 		}
-		customClaims.UserID = userData.UserID
-		customClaims.PersonalOrgID = userData.PersonalOrgID
+		customClaims.UserID = string(userData.UserID)
+		customClaims.PersonalOrgID = string(lo.FromPtr(userData.PersonalOrgID))
 		customClaims.Role = userData.Role
 	}
 

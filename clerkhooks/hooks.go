@@ -16,8 +16,8 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/clerk/clerk-sdk-go/v2"
-	clerkbilling "github.com/clerk/clerk-sdk-go/v2/billing"
 	clerkorg "github.com/clerk/clerk-sdk-go/v2/organization"
+	"github.com/clerk/clerk-sdk-go/v2/organizationinvitation"
 	clerkuser "github.com/clerk/clerk-sdk-go/v2/user"
 )
 
@@ -26,13 +26,22 @@ type App interface {
 }
 
 type User struct {
+	ID pulid.ID
+}
+
+type UserBothIDs struct {
 	ID            pulid.ID
 	PersonalOrgID *pulid.ID
-	ImageURL      *string
 }
 
 type Organization struct {
 	ID pulid.ID
+}
+
+type EnterpriseOrg struct {
+	ID               pulid.ID
+	AccountID        string
+	HasExistingUsers bool
 }
 
 type UserInputData struct {
@@ -56,11 +65,12 @@ type CreateUserData struct {
 	PersonalOrgID           *pulid.ID
 	ExternalAccountProvider *string
 	Plan                    string
+	EnterpriseOrgID         *pulid.ID
 	UserInputData
 }
 
 type CreateOrgData struct {
-	UserID       pulid.ID
+	CreatorID    *pulid.ID
 	OrgID        *pulid.ID
 	OrgAccountID string
 	Plan         string
@@ -76,7 +86,7 @@ type CreateMembershipData struct {
 type AppClient interface {
 	CreateMembership(ctx context.Context, data *CreateMembershipData) error
 	CreateOrganization(ctx context.Context, data *CreateOrgData) (*Organization, error)
-	CreateUser(ctx context.Context, data *CreateUserData) (*User, error)
+	CreateUser(ctx context.Context, data *CreateUserData) (*UserBothIDs, error)
 	DeleteMembership(ctx context.Context, orgID pulid.ID, userID pulid.ID) error
 	GetUser(ctx context.Context, userID pulid.ID) (*User, error)
 	GetUserByAccountID(ctx context.Context, accountID string) (*User, error)
@@ -100,6 +110,10 @@ type AppClient interface {
 		orgID pulid.ID,
 		plan string,
 	) error
+}
+
+type DomainOrgClient interface {
+	GetOrgByDomainIfExists(ctx context.Context, domain string) (*EnterpriseOrg, error)
 }
 
 type webhookEvent struct {
@@ -127,21 +141,21 @@ type userData struct {
 }
 
 type UserPublicMetadata struct {
-	UserID        string `json:"app_user_id"`
-	PersonalOrgID string `json:"app_personal_org_id"`
-	Role          string `json:"app_user_role"`
+	UserID        pulid.ID  `json:"app_user_id"`
+	PersonalOrgID *pulid.ID `json:"app_personal_org_id,omitempty"`
+	Role          string    `json:"app_user_role"`
 }
 
 type organizationData struct {
 	ID             string            `json:"id"`
 	Name           string            `json:"name"`
 	ImageURL       *string           `json:"image_url,omitempty"`
-	CreatedBy      string            `json:"created_by"`
+	CreatedBy      *string           `json:"created_by"`
 	PublicMetadata orgPublicMetadata `json:"public_metadata"`
 }
 
 type orgPublicMetadata struct {
-	OrgID string `json:"app_org_id"`
+	OrgID pulid.ID `json:"app_org_id"`
 }
 
 type membershipData struct {
@@ -174,6 +188,102 @@ func (c *ClerkHook) isEmployeeEmail(email string) bool {
 		strings.HasSuffix(email, fmt.Sprintf("@%s", c.employeeEmailConfig.domain))
 }
 
+type CreateAndSyncResponse struct {
+	User       *UserBothIDs
+	IsEmployee bool
+}
+
+type createAndSyncParams struct {
+	AccountID               string
+	ExternalAccountProvider *string
+	UserInputData
+}
+
+func (c *ClerkHook) createAndSyncUser(
+	ctx context.Context,
+	params *createAndSyncParams,
+) (*CreateAndSyncResponse, error) {
+	if params.EmailAddress == nil && params.ExternalAccountProvider == nil {
+		return nil, fmt.Errorf("user has no email address or external account provider")
+	}
+
+	isEmployee := c.isEmployeeEmail(lo.FromPtr(params.EmailAddress))
+	enterpriseOrgID := c.autoInviteToOrgByDomain(ctx, params.EmailAddress)
+
+	user, err := c.appClient.CreateUser(ctx, &CreateUserData{
+		AccountID:               params.AccountID,
+		IsEmployee:              isEmployee,
+		UserInputData:           params.UserInputData,
+		ExternalAccountProvider: params.ExternalAccountProvider,
+		Plan:                    "free_user",
+		EnterpriseOrgID:         enterpriseOrgID,
+		UserID:                  nil,
+		PersonalOrgID:           nil,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating user: %w", err)
+	}
+
+	err = UpdateCreatedUser(ctx, user.ID, params.AccountID, isEmployee, user.PersonalOrgID)
+	if err != nil {
+		return nil, fmt.Errorf("updating clerk user: %w", err)
+	}
+
+	return &CreateAndSyncResponse{User: user, IsEmployee: isEmployee}, nil
+}
+
+func (c *ClerkHook) autoInviteToOrgByDomain(ctx context.Context, emailAddress *string) *pulid.ID {
+	if emailAddress == nil {
+		return nil
+	}
+
+	domainClient, ok := c.appClient.(DomainOrgClient)
+	if !ok {
+		return nil
+	}
+
+	parts := strings.SplitN(*emailAddress, "@", 2)
+	if len(parts) != 2 {
+		return nil
+	}
+
+	org, err := domainClient.GetOrgByDomainIfExists(ctx, parts[1])
+	if err != nil {
+		logger.WarnContext(ctx, "error fetching org by domain for auto-invite",
+			"domain", parts[1],
+			"error", err,
+		)
+		return nil
+	}
+	if org == nil {
+		return nil
+	}
+
+	newCtx := context.WithoutCancel(ctx)
+	go func() {
+		_, err := organizationinvitation.Create(
+			newCtx,
+			&organizationinvitation.CreateParams{
+				EmailAddress:   emailAddress,
+				OrganizationID: org.AccountID,
+				Role: lo.ToPtr(
+					lo.Ternary(!org.HasExistingUsers, "org:admin", "org:member"),
+				),
+			},
+		)
+		if err != nil {
+			logger.WarnContext(ctx, "failed to auto-invite user to org",
+				"email", lo.FromPtr(emailAddress),
+				"orgID", org.ID,
+				"orgAccountID", org.AccountID,
+				"error", err,
+			)
+		}
+	}()
+
+	return &org.ID
+}
+
 func (c *ClerkHook) CreateNewUserFromClerkUser(
 	ctx context.Context,
 	accountID string,
@@ -183,78 +293,33 @@ func (c *ClerkHook) CreateNewUserFromClerkUser(
 		return nil, fmt.Errorf("getting clerk user: %w", err)
 	}
 
-	emailAddress := lo.EmptyableToPtr(
-		lo.FirstOr(clerkUser.EmailAddresses, &clerk.EmailAddress{}).EmailAddress,
-	)
-	phone := lo.EmptyableToPtr(
-		lo.FirstOr(clerkUser.PhoneNumbers, &clerk.PhoneNumber{}).PhoneNumber,
-	)
-	externalAccountProvider := lo.EmptyableToPtr(
-		lo.FirstOr(clerkUser.ExternalAccounts, &clerk.ExternalAccount{}).Provider,
-	)
-
-	if emailAddress == nil && externalAccountProvider == nil {
-		return nil, fmt.Errorf("clerk user has no email address or external account provider")
-	}
-
-	plans, err := clerkbilling.ListSubscriptionItems(
-		ctx,
-		&clerkbilling.ListSubscriptionItemsParams{
-			UserID: &accountID,
-			Status: lo.ToPtr("active"),
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("listing subscription items: %w", err)
-	}
-
-	plan := "free_user"
-	if len(plans.Data) > 0 {
-		plan = plans.Data[0].Plan.Slug
-	}
-
-	isEmployee := c.isEmployeeEmail(lo.FromPtr(emailAddress))
-	user, err := c.appClient.CreateUser(ctx, &CreateUserData{
-		AccountID:  accountID,
-		IsEmployee: isEmployee,
+	res, err := c.createAndSyncUser(ctx, &createAndSyncParams{
+		AccountID: accountID,
+		ExternalAccountProvider: lo.EmptyableToPtr(
+			lo.FirstOr(clerkUser.ExternalAccounts, &clerk.ExternalAccount{}).Provider,
+		),
 		UserInputData: UserInputData{
-			FirstName:    clerkUser.FirstName,
-			LastName:     clerkUser.LastName,
-			Username:     clerkUser.Username,
-			ImageURL:     clerkUser.ImageURL,
-			EmailAddress: emailAddress,
-			Phone:        phone,
+			FirstName: clerkUser.FirstName,
+			LastName:  clerkUser.LastName,
+			Username:  clerkUser.Username,
+			ImageURL:  clerkUser.ImageURL,
+			EmailAddress: lo.EmptyableToPtr(
+				lo.FirstOr(clerkUser.EmailAddresses, &clerk.EmailAddress{}).EmailAddress,
+			),
+			Phone: lo.EmptyableToPtr(
+				lo.FirstOr(clerkUser.PhoneNumbers, &clerk.PhoneNumber{}).PhoneNumber,
+			),
 		},
-		PersonalOrgID:           nil,
-		UserID:                  nil,
-		ExternalAccountProvider: externalAccountProvider,
-		Plan:                    plan,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("creating user: %w", err)
+		return nil, err
 	}
 
-	err = UpdateCreatedUser(
-		ctx,
-		user.ID,
-		accountID,
-		isEmployee,
-		user.PersonalOrgID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("updating clerk user: %w", err)
-	}
-
-	role := lo.Ternary(isEmployee, "EMPLOYEE", "USER")
-	personalOrgID := ""
-	if user.PersonalOrgID != nil {
-		personalOrgID = string(*user.PersonalOrgID)
-	}
-
+	user := res.User
 	return &UserPublicMetadata{
-		UserID:        string(user.ID),
-		Role:          role,
-		PersonalOrgID: personalOrgID,
+		UserID:        user.ID,
+		Role:          lo.Ternary(res.IsEmployee, "EMPLOYEE", "USER"),
+		PersonalOrgID: user.PersonalOrgID,
 	}, nil
 }
 
@@ -267,62 +332,26 @@ func (c *ClerkHook) handleUserCreated(
 		return fmt.Errorf("reading UserData: %w", err)
 	}
 
-	existingUser, err := c.appClient.GetUserByAccountIDOrNil(ctx, userData.ID)
-	if err != nil {
-		return fmt.Errorf("checking for existing user with accountID %s: %w", userData.ID, err)
-	}
-	if existingUser != nil {
+	// User already exists in our DB
+	if userData.ExternalID != "" {
 		return nil
 	}
 
-	isEmployee := false
-	for _, email := range userData.EmailAddresses {
-		if c.isEmployeeEmail(email.EmailAddress) {
-			isEmployee = true
-			break
-		}
-	}
-
-	emailAddress := lo.EmptyableToPtr(lo.FirstOrEmpty(userData.EmailAddresses).EmailAddress)
-	phone := lo.EmptyableToPtr(lo.FirstOrEmpty(userData.PhoneNumbers).PhoneNumber)
-	externalAccountProvider := lo.EmptyableToPtr(
-		lo.FirstOrEmpty(userData.ExternalAccounts).Provider,
-	)
-
-	plans, err := clerkbilling.ListSubscriptionItems(
-		ctx,
-		&clerkbilling.ListSubscriptionItemsParams{UserID: &userData.ID, Status: lo.ToPtr("active")},
-	)
-	if err != nil {
-		return fmt.Errorf("listing subscription items: %w", err)
-	}
-
-	plan := "free_user"
-	if len(plans.Data) > 0 {
-		plan = plans.Data[0].Plan.Slug
-	}
-
-	user, err := c.appClient.CreateUser(ctx, &CreateUserData{
-		AccountID:  userData.ID,
-		IsEmployee: isEmployee,
+	_, err := c.createAndSyncUser(ctx, &createAndSyncParams{
+		AccountID: userData.ID,
+		ExternalAccountProvider: lo.EmptyableToPtr(
+			lo.FirstOrEmpty(userData.ExternalAccounts).Provider,
+		),
 		UserInputData: UserInputData{
 			FirstName:    userData.FirstName,
 			LastName:     userData.LastName,
 			Username:     userData.Username,
 			ImageURL:     userData.ImageURL,
-			EmailAddress: emailAddress,
-			Phone:        phone,
+			EmailAddress: lo.EmptyableToPtr(lo.FirstOrEmpty(userData.EmailAddresses).EmailAddress),
+			Phone:        lo.EmptyableToPtr(lo.FirstOrEmpty(userData.PhoneNumbers).PhoneNumber),
 		},
-		PersonalOrgID:           nil,
-		UserID:                  nil,
-		ExternalAccountProvider: externalAccountProvider,
-		Plan:                    plan,
 	})
-	if err != nil {
-		return err
-	}
-
-	return UpdateCreatedUser(ctx, user.ID, userData.ID, isEmployee, user.PersonalOrgID)
+	return err
 }
 
 func UpdateCreatedUser(
@@ -333,13 +362,8 @@ func UpdateCreatedUser(
 	personalOrgID *pulid.ID,
 ) error {
 	role := lo.Ternary(isEmployee, "EMPLOYEE", "USER")
-	userIDstr := string(userID)
 
-	publicMetadata := &UserPublicMetadata{UserID: userIDstr, Role: role, PersonalOrgID: ""}
-	if personalOrgID != nil {
-		publicMetadata.PersonalOrgID = string(*personalOrgID)
-	}
-
+	publicMetadata := &UserPublicMetadata{UserID: userID, Role: role, PersonalOrgID: personalOrgID}
 	publicMetadataJSON, err := json.Marshal(publicMetadata)
 	if err != nil {
 		return fmt.Errorf("writing UserPublicMetadata: %w", err)
@@ -347,7 +371,7 @@ func UpdateCreatedUser(
 
 	rawMessage := json.RawMessage(publicMetadataJSON)
 	_, err = clerkuser.Update(ctx, AccountID, &clerkuser.UpdateParams{
-		ExternalID:     &userIDstr,
+		ExternalID:     lo.ToPtr(string(userID)),
 		PublicMetadata: &rawMessage,
 	})
 	if err != nil {
@@ -414,13 +438,9 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 		)
 	}
 
-	emailAddress := lo.EmptyableToPtr(lo.FirstOrEmpty(clerkUser.EmailAddresses).EmailAddress)
-	phoneNumber := lo.FirstOrEmpty(clerkUser.PhoneNumbers)
-	phone := lo.EmptyableToPtr("")
-	if phoneNumber != nil {
-		lo.EmptyableToPtr(phoneNumber.PhoneNumber)
-	}
-	provider := lo.EmptyableToPtr(lo.FirstOrEmpty(clerkUser.ExternalAccounts).Provider)
+	emailAddress := lo.EmptyableToPtr(lo.FirstOr(clerkUser.EmailAddresses, &clerk.EmailAddress{}).EmailAddress)
+	phone := lo.EmptyableToPtr(lo.FirstOr(clerkUser.PhoneNumbers, &clerk.PhoneNumber{}).PhoneNumber)
+	provider := lo.EmptyableToPtr(lo.FirstOr(clerkUser.ExternalAccounts, &clerk.ExternalAccount{}).Provider)
 	logger.Debug("creating account", "email", emailAddress, "provider", provider)
 
 	createdUser, err := c.appClient.CreateUser(ctx, &CreateUserData{
@@ -438,6 +458,7 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 		IsEmployee:              isEmployee,
 		ExternalAccountProvider: provider,
 		Plan:                    "free_user",
+		EnterpriseOrgID:         nil,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)
@@ -446,15 +467,10 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 	publicMetadata := &UserPublicMetadata{}
 	err = json.Unmarshal(clerkUser.PublicMetadata, publicMetadata)
 	if err != nil && publicMetadata.UserID == "" {
-		createdUserIDStr := string(createdUser.ID)
-		personalOrgIDstr := ""
-		if personalOrgID != nil {
-			personalOrgIDstr = string(*personalOrgID)
-		}
 		publicMetadata := &UserPublicMetadata{
-			UserID:        createdUserIDStr,
+			UserID:        createdUser.ID,
 			Role:          "EMPLOYEE",
-			PersonalOrgID: personalOrgIDstr,
+			PersonalOrgID: createdUser.PersonalOrgID,
 		}
 
 		publicMetadataJSON, err := json.Marshal(publicMetadata)
@@ -464,7 +480,7 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 
 		rawMessage := json.RawMessage(publicMetadataJSON)
 		_, err = clerkuser.Update(ctx, accountID, &clerkuser.UpdateParams{
-			ExternalID:     &createdUserIDStr,
+			ExternalID:     lo.ToPtr(string(createdUser.ID)),
 			PublicMetadata: &rawMessage,
 		})
 		if err != nil {
@@ -472,7 +488,7 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 		}
 	}
 
-	return createdUser, nil
+	return &User{ID: createdUser.ID}, nil
 }
 
 func (c *ClerkHook) GetOrCreateOrgByAccountID(
@@ -505,7 +521,7 @@ func (c *ClerkHook) GetOrCreateOrgByAccountID(
 
 	createdOrg, err := c.appClient.CreateOrganization(ctx, &CreateOrgData{
 		OrgAccountID: accountID,
-		UserID:       userID,
+		CreatorID:    &userID,
 		OrgID:        orgID,
 		OrgInputData: OrgInputData{
 			Name:     clerkOrg.Name,
@@ -520,9 +536,8 @@ func (c *ClerkHook) GetOrCreateOrgByAccountID(
 	publicMetadata := &orgPublicMetadata{}
 	err = json.Unmarshal(clerkOrg.PublicMetadata, publicMetadata)
 	if err != nil && publicMetadata.OrgID == "" {
-		createdOrgIDStr := string(createdOrg.ID)
 		publicMetadata := &orgPublicMetadata{
-			OrgID: createdOrgIDStr,
+			OrgID: createdOrg.ID,
 		}
 
 		publicMetadataJSON, err := json.Marshal(publicMetadata)
@@ -558,13 +573,17 @@ func (c *ClerkHook) handleOrganizationCreated(ctx context.Context, data []byte) 
 	}
 
 	accountID := orgData.CreatedBy
-	user, err := c.appClient.GetUserByAccountID(ctx, accountID)
-	if err != nil {
-		slog.Error("creating org", "error", err)
+	var userID *pulid.ID
+	if accountID != nil {
+		user, err := c.appClient.GetUserByAccountID(ctx, *accountID)
+		if err != nil {
+			return fmt.Errorf("fetching user by accountID: %s: %w", *accountID, err)
+		}
+		userID = &user.ID
 	}
 
 	org, err := c.appClient.CreateOrganization(ctx, &CreateOrgData{
-		UserID:       user.ID,
+		CreatorID:    userID,
 		OrgAccountID: orgData.ID,
 		OrgInputData: OrgInputData{
 			Name:     orgData.Name,
@@ -577,7 +596,7 @@ func (c *ClerkHook) handleOrganizationCreated(ctx context.Context, data []byte) 
 		return err
 	}
 
-	publicMetadata := &orgPublicMetadata{OrgID: string(org.ID)}
+	publicMetadata := &orgPublicMetadata{OrgID: org.ID}
 	publicMetadataJSON, err := json.Marshal(publicMetadata)
 	if err != nil {
 		return fmt.Errorf("writing OrgPublicMetadata: %w", err)
@@ -738,8 +757,8 @@ func (c *ClerkHook) handleSubscriptionItemActive(
 			logger.WarnContext(
 				ctx,
 				"User not found when handling subscription item active",
-				"userID",
-				*userID,
+				"userID", *userID,
+				"plan", subscriptionItem.Plan.Slug,
 			)
 			return nil
 		}
