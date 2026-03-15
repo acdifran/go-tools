@@ -50,11 +50,13 @@ func CookieAuth(next http.Handler) http.Handler {
 }
 
 type CustomClaims struct {
-	UserID        string `json:"app_user_id"`
-	Role          string `json:"app_user_role"`
-	OrgID         string `json:"app_org_id"`
-	PersonalOrgID string `json:"app_personal_org_id"`
-	Plan          string `json:"pla"`
+	UserID          string `json:"app_user_id"`
+	Role            string `json:"app_user_role"`
+	OrgID           string `json:"app_org_id"`
+	PersonalOrgID   string `json:"app_personal_org_id"`
+	Plan            string `json:"pla"`
+	PlanOverride    string `json:"plan_override"`
+	OrgPlanOverride string `json:"org_plan_override"`
 }
 
 func createAuthViewerContext(
@@ -111,9 +113,15 @@ func createAuthViewerContext(
 	role := lo.Ternary(customClaims.Role == "EMPLOYEE", viewer.Employee, viewer.User)
 
 	plan := lo.Ternary(claims.ActiveOrganizationID == "", "free_user", "free_org")
-	planParts := strings.Split(customClaims.Plan, ":")
-	if len(planParts) > 1 {
-		plan = planParts[1]
+	if claims.ActiveOrganizationID != "" && customClaims.OrgPlanOverride != "" {
+		plan = customClaims.OrgPlanOverride
+	} else if claims.ActiveOrganizationID == "" && customClaims.PlanOverride != "" {
+		plan = customClaims.PlanOverride
+	} else {
+		planParts := strings.Split(customClaims.Plan, ":")
+		if len(planParts) > 1 {
+			plan = planParts[1]
+		}
 	}
 
 	if orgID == "" && customClaims.PersonalOrgID != "" {
