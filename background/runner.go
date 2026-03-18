@@ -2,8 +2,12 @@ package background
 
 import (
 	"context"
+	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
+
+	"github.com/acdifran/go-tools/logger"
 )
 
 type Runner struct {
@@ -77,6 +81,17 @@ func (r *Runner) runTask(ctx context.Context, fn func(context.Context), opts ...
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Critical(
+					"background task panicked",
+					"panic",
+					fmt.Sprint(r),
+					"stack",
+					string(debug.Stack()),
+				)
+			}
+		}()
 		if timeout > 0 {
 			taskCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()

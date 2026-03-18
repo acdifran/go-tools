@@ -190,11 +190,13 @@ func getOrCreateUserAndWriteCustomClaims(
 		}
 
 		customClaims = &CustomClaims{
-			UserID:        string(user.ID),
-			Role:          "EMPLOYEE",
-			OrgID:         string(org.ID),
-			PersonalOrgID: "",
-			Plan:          "free_user",
+			UserID:          string(user.ID),
+			Role:            "EMPLOYEE",
+			OrgID:           string(org.ID),
+			PersonalOrgID:   "",
+			Plan:            "free_user",
+			PlanOverride:    "",
+			OrgPlanOverride: "",
 		}
 
 		claims.Custom = customClaims
@@ -209,11 +211,13 @@ func getOrCreateUserAndWriteCustomClaims(
 	}
 
 	customClaims = &CustomClaims{
-		UserID:        string(user.ID),
-		Role:          "EMPLOYEE",
-		OrgID:         "",
-		PersonalOrgID: string(org.ID),
-		Plan:          "free_user",
+		UserID:          string(user.ID),
+		Role:            "EMPLOYEE",
+		OrgID:           "",
+		PersonalOrgID:   string(org.ID),
+		Plan:            "free_user",
+		PlanOverride:    "",
+		OrgPlanOverride: "",
 	}
 	claims.Custom = customClaims
 	return claims, nil
