@@ -438,9 +438,13 @@ func (c *ClerkHook) GetOrCreateUserByAccountID(
 		)
 	}
 
-	emailAddress := lo.EmptyableToPtr(lo.FirstOr(clerkUser.EmailAddresses, &clerk.EmailAddress{}).EmailAddress)
+	emailAddress := lo.EmptyableToPtr(
+		lo.FirstOr(clerkUser.EmailAddresses, &clerk.EmailAddress{}).EmailAddress,
+	)
 	phone := lo.EmptyableToPtr(lo.FirstOr(clerkUser.PhoneNumbers, &clerk.PhoneNumber{}).PhoneNumber)
-	provider := lo.EmptyableToPtr(lo.FirstOr(clerkUser.ExternalAccounts, &clerk.ExternalAccount{}).Provider)
+	provider := lo.EmptyableToPtr(
+		lo.FirstOr(clerkUser.ExternalAccounts, &clerk.ExternalAccount{}).Provider,
+	)
 	logger.Debug("creating account", "email", emailAddress, "provider", provider)
 
 	createdUser, err := c.appClient.CreateUser(ctx, &CreateUserData{
@@ -720,18 +724,18 @@ func (c *ClerkHook) handleOrganizationMembershipDeleted(
 
 	user, err := c.appClient.GetUserByAccountID(ctx, membershipData.PublicUserData.UserID)
 	if err != nil {
-		return err
+		return fmt.Errorf(
+			"fetching user %s by account id: %w",
+			membershipData.PublicUserData.UserID,
+			err,
+		)
 	}
 
 	orgID := pulid.ID(membershipData.Organization.PublicMetadata.OrgID)
-	role, err := membershiprole.Coerce(membershipData.Role)
-	if err != nil {
-		return err
-	}
 
 	err = c.appClient.DeleteMembership(ctx, orgID, user.ID)
 	if err != nil {
-		return fmt.Errorf("deleting user %s as %s for org %s: %w", user.ID, role, orgID, err)
+		return fmt.Errorf("deleting user %s from org %s: %w", user.ID, orgID, err)
 	}
 
 	return nil
