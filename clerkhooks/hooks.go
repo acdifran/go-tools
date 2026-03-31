@@ -110,6 +110,7 @@ type AppClient interface {
 		orgID pulid.ID,
 		plan string,
 	) error
+	DeleteUser(ctx context.Context, userID pulid.ID) error
 }
 
 type DomainOrgClient interface {
@@ -570,6 +571,25 @@ func (c *ClerkHook) GetPersonalOrgByAccountID(
 	return c.appClient.GetOrgByAccountID(ctx, accountID)
 }
 
+func (c *ClerkHook) handleUserDeleted(ctx context.Context, data []byte) error {
+	var userData userData
+	if err := json.Unmarshal(data, &userData); err != nil {
+		return fmt.Errorf("reading UserData: %w", err)
+	}
+
+	user, err := c.appClient.GetUserByAccountID(ctx, userData.ID)
+	if err != nil {
+		return fmt.Errorf("getting user to delete: %w", err)
+	}
+
+	err = c.appClient.DeleteUser(ctx, user.ID)
+	if err != nil {
+		return fmt.Errorf("deleting user %s: %w", user.ID, err)
+	}
+
+	return nil
+}
+
 func (c *ClerkHook) handleOrganizationCreated(ctx context.Context, data []byte) error {
 	var orgData organizationData
 	if err := json.Unmarshal(data, &orgData); err != nil {
@@ -827,6 +847,8 @@ func (c *ClerkHook) HandleHooks(
 		err = c.handleUserCreated(ctx, event.Data)
 	case "user.updated":
 		err = c.handleUserUpdated(ctx, event.Data)
+	case "user.deleted":
+		err = c.handleUserDeleted(ctx, event.Data)
 	case "organization.created":
 		err = c.handleOrganizationCreated(ctx, event.Data)
 	case "organization.updated":
