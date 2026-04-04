@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"sync"
 
 	"github.com/acdifran/go-tools/clienterror"
 )
@@ -18,6 +19,7 @@ type GoogleHandlerOptions struct {
 type GoogleHandler struct {
 	handler slog.Handler
 	buf     *bytes.Buffer
+	mu      *sync.Mutex
 	attrs   []slog.Attr // Track attributes added via WithAttrs
 }
 
@@ -29,6 +31,7 @@ func (h *GoogleHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &GoogleHandler{
 		handler: h.handler.WithAttrs(attrs),
 		buf:     h.buf,
+		mu:      h.mu,
 		attrs:   append(h.attrs, attrs...), // Accumulate attributes
 	}
 }
@@ -37,6 +40,7 @@ func (h *GoogleHandler) WithGroup(name string) slog.Handler {
 	return &GoogleHandler{
 		handler: h.handler.WithGroup(name),
 		buf:     h.buf,
+		mu:      h.mu,
 		attrs:   h.attrs, // Preserve accumulated attributes
 	}
 }
@@ -76,6 +80,9 @@ func (h *GoogleHandler) Handle(ctx context.Context, r slog.Record) error {
 	if len(errorAttrs) > 0 {
 		r.AddAttrs(errorAttrs...)
 	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	h.buf.Reset()
 	if err := h.handler.Handle(ctx, r); err != nil {
@@ -144,7 +151,8 @@ func NewGoogleHandler(opts *GoogleHandlerOptions) *GoogleHandler {
 	return &GoogleHandler{
 		handler: slog.NewJSONHandler(buf, hopts),
 		buf:     buf,
-		attrs:   []slog.Attr{}, // Initialize empty attrs slice
+		mu:      &sync.Mutex{},
+		attrs:   []slog.Attr{},
 	}
 }
 

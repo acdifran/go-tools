@@ -9,6 +9,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"sync"
 
 	"github.com/acdifran/go-tools/clienterror"
 	"github.com/fatih/color"
@@ -21,6 +22,7 @@ type PrettyHandlerOptions struct {
 type PrettyHandler struct {
 	handler slog.Handler
 	buf     *bytes.Buffer
+	mu      *sync.Mutex
 	l       *log.Logger
 	attrs   []slog.Attr // Track attributes added via WithAttrs
 }
@@ -33,6 +35,7 @@ func (h *PrettyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &PrettyHandler{
 		handler: h.handler.WithAttrs(attrs),
 		buf:     h.buf,
+		mu:      h.mu,
 		l:       h.l,
 		attrs:   append(h.attrs, attrs...), // Accumulate attributes
 	}
@@ -42,6 +45,7 @@ func (h *PrettyHandler) WithGroup(name string) slog.Handler {
 	return &PrettyHandler{
 		handler: h.handler.WithGroup(name),
 		buf:     h.buf,
+		mu:      h.mu,
 		l:       h.l,
 		attrs:   h.attrs, // Preserve accumulated attributes
 	}
@@ -86,6 +90,9 @@ func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
 	if len(errorAttrs) > 0 {
 		r.AddAttrs(errorAttrs...)
 	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	h.buf.Reset()
 	if err := h.handler.Handle(ctx, r); err != nil {
@@ -183,8 +190,9 @@ func NewPrettyHandler(opts *PrettyHandlerOptions) *PrettyHandler {
 	h := &PrettyHandler{
 		handler: slog.NewJSONHandler(buf, hopts),
 		buf:     buf,
+		mu:      &sync.Mutex{},
 		l:       log.New(os.Stdout, "", 0),
-		attrs:   []slog.Attr{}, // Initialize empty attrs slice
+		attrs:   []slog.Attr{},
 	}
 
 	return h
