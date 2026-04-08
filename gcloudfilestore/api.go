@@ -56,6 +56,10 @@ func (g *GCloudFileStore) PresignedGetUrl(key string, opts ...filestoreoptions.P
 		}
 	}
 
+	if g.ServiceAccount != "" {
+		signOpts.GoogleAccessID = g.ServiceAccount
+	}
+
 	signedURL, err := g.Client.Bucket(g.BucketName).SignedURL(key, signOpts)
 	if err != nil {
 		return "", fmt.Errorf("signing request, %w", err)
@@ -80,6 +84,10 @@ func (g *GCloudFileStore) PresignedPutUrl(
 		signOpts.Headers = []string{
 			fmt.Sprintf("Cache-Control:max-age=%d, must-revalidate", int(config.CacheDuration.Seconds())),
 		}
+	}
+
+	if g.ServiceAccount != "" {
+		signOpts.GoogleAccessID = g.ServiceAccount
 	}
 
 	signedURL, err := g.Client.Bucket(g.BucketName).SignedURL(key, signOpts)
