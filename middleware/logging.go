@@ -1,10 +1,13 @@
 package middleware
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -25,6 +28,14 @@ func newCustomResponseWriter(w http.ResponseWriter) *customResponseWriter {
 func (crw *customResponseWriter) WriteHeader(statusCode int) {
 	crw.statusCode = statusCode
 	crw.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (crw *customResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := crw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("hijack not supported")
+	}
+	return h.Hijack()
 }
 
 func (crw *customResponseWriter) Write(b []byte) (int, error) {
