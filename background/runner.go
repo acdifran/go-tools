@@ -28,12 +28,12 @@ func WithDefaultTaskTimeout(timeout time.Duration) RunnerOption {
 type TaskOption func(*taskOptions)
 
 type taskOptions struct {
-	timeout time.Duration
+	timeout *time.Duration
 }
 
 func WithTimeout(timeout time.Duration) TaskOption {
 	return func(o *taskOptions) {
-		o.timeout = timeout
+		o.timeout = &timeout
 	}
 }
 
@@ -74,8 +74,8 @@ func (r *Runner) runTask(ctx context.Context, fn func(context.Context), opts ...
 	}
 
 	timeout := r.defaultTaskTimeout
-	if options.timeout > 0 {
-		timeout = options.timeout
+	if options.timeout != nil {
+		timeout = *options.timeout
 	}
 
 	r.wg.Add(1)
