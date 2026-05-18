@@ -107,6 +107,8 @@ type ActionFn func(ctx context.Context) error
 {{- $updateOneReceiver := receiver $node.UpdateOneName }}
 {{- $bulk := printf "%sCreateBulk" (pascal $node.Name) }}
 {{- $bulkReceiver := receiver $bulk }}
+{{- $upsertBulk := printf "%sUpsertBulk" (pascal $node.Name) }}
+{{- $upsertBulkReceiver := receiver $upsertBulk }}
 func ({{$bulkReceiver}} *{{$bulk}}) MakeChangeset(name string, options ...ChangesetOption) *BulkChangeset {
 	return NewBulkChangeset(name, {{$bulkReceiver}}, options...)
 }
@@ -153,6 +155,14 @@ func ({{$node.UpdateOneReceiver}} *{{$node.Name}}UpsertOne) MakeChangeset(name s
 func ({{$node.UpdateOneReceiver}} *{{$node.Name}}UpsertOne) setConfig(config config) {
 	{{$node.UpdateOneReceiver}}.create.config = config
 	{{$node.UpdateOneReceiver}}.create.mutation.config = config
+}
+
+func ({{$upsertBulkReceiver}} *{{$upsertBulk}}) MakeChangeset(name string, options ...ChangesetOption) *BulkChangeset {
+	return NewBulkChangeset(name, {{$upsertBulkReceiver}}, options...)
+}
+
+func ({{$upsertBulkReceiver}} *{{$upsertBulk}}) setConfig(config config) {
+	{{$upsertBulkReceiver}}.create.setConfig(config)
 }
 
 func ({{$node.DeleteReceiver}} *{{$node.DeleteName}}) MakeChangeset(name string, options ...ChangesetOption) *BulkChangeset {
