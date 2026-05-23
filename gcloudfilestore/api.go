@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/acdifran/go-tools/filestoreoptions"
+	"io"
 	"net/url"
 	"time"
 
@@ -105,4 +106,23 @@ func (g *GCloudFileStore) DeleteObject(ctx context.Context, key string) error {
 	}
 
 	return nil
+}
+
+func (g *GCloudFileStore) DownloadBytes(ctx context.Context, key string) ([]byte, error) {
+	rc, err := g.Client.Bucket(g.BucketName).Object(key).NewReader(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("downloading %s: %w", key, err)
+	}
+	defer rc.Close()
+
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("downloading %s: %w", key, err)
+	}
+
+	return data, nil
+}
+
+func (g *GCloudFileStore) GetPath(key string) string {
+	return fmt.Sprintf("gs://%s/%s", g.BucketName, key)
 }

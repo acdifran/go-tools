@@ -6,6 +6,7 @@ import (
 	"github.com/acdifran/go-tools/filestoreoptions"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"io"
 	"net/url"
 )
 
@@ -103,4 +104,26 @@ func (s *S3FileStore) DeleteObject(ctx context.Context, key string) error {
 	}
 
 	return nil
+}
+
+func (s *S3FileStore) DownloadBytes(ctx context.Context, key string) ([]byte, error) {
+	resp, err := s.Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.BucketName),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("downloading %s: %w", key, err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("downloading %s: %w", key, err)
+	}
+
+	return data, nil
+}
+
+func (s *S3FileStore) GetPath(key string) string {
+	return fmt.Sprintf("s3://%s/%s", s.BucketName, key)
 }
