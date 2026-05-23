@@ -3,10 +3,11 @@ package gcloudfilestore
 import (
 	"context"
 	"fmt"
-	"github.com/acdifran/go-tools/filestoreoptions"
 	"io"
 	"net/url"
 	"time"
+
+	"github.com/acdifran/go-tools/filestoreoptions"
 
 	"cloud.google.com/go/storage"
 )
@@ -108,7 +109,7 @@ func (g *GCloudFileStore) DeleteObject(ctx context.Context, key string) error {
 	return nil
 }
 
-func (g *GCloudFileStore) DownloadBytes(ctx context.Context, key string) ([]byte, error) {
+func (g *GCloudFileStore) DownloadFile(ctx context.Context, key string) ([]byte, error) {
 	rc, err := g.Client.Bucket(g.BucketName).Object(key).NewReader(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("downloading %s: %w", key, err)
@@ -125,4 +126,47 @@ func (g *GCloudFileStore) DownloadBytes(ctx context.Context, key string) ([]byte
 
 func (g *GCloudFileStore) GetPath(key string) string {
 	return fmt.Sprintf("gs://%s/%s", g.BucketName, key)
+}
+
+func (g *GCloudFileStore) processUploadOptions(opts ...filestoreoptions.UploadOption) *filestoreoptions.UploadConfig {
+	config := &filestoreoptions.UploadConfig{
+		CacheDuration: g.DefaultObjectCacheDuration,
+	}
+
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	return config
+}
+
+func (g *GCloudFileStore) UploadFile(
+	ctx context.Context,
+	key string,
+	data io.Reader,
+	opts ...filestoreoptions.UploadOption,
+) error {
+	config := g.processUploadOptions(opts...)
+
+	writer := g.Client.Bucket(g.BucketName).Object(key).NewWriter(ctx)
+	if config.CacheDuration != nil {
+		writer.CacheControl = fmt.Sprintf("max-age=%d, must-revalidate", int(config.CacheDuration.Seconds()))
+	}
+	if config.ContentType != "" {
+		writer.ContentType = config.ContentType
+	}
+	if config.Metadata != nil {
+		writer.Metadata = config.Metadata
+	}
+
+	if _, err := io.Copy(writer, data); err != nil {
+		writer.Close()
+		return fmt.Errorf("uploading %s: %w", key, err)
+	}
+
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("uploading %s: %w", key, err)
+	}
+
+	return nil
 }

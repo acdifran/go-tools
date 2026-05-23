@@ -35,3 +35,29 @@ func SetDownloadOptions(fileName string, contentType string) PresignOption {
 		}
 	}
 }
+
+type UploadConfig struct {
+	CacheDuration *time.Duration
+	ContentType   string
+	Metadata      map[string]string
+}
+
+type UploadOption func(*UploadConfig)
+
+func SetUploadCacheDuration(duration time.Duration) UploadOption {
+	return func(c *UploadConfig) {
+		c.CacheDuration = &duration
+	}
+}
+
+func SetUploadContentType(contentType string) UploadOption {
+	return func(c *UploadConfig) {
+		c.ContentType = contentType
+	}
+}
+
+func SetUploadMetadata(metadata map[string]string) UploadOption {
+	return func(c *UploadConfig) {
+		c.Metadata = metadata
+	}
+}

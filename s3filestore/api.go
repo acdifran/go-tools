@@ -106,7 +106,7 @@ func (s *S3FileStore) DeleteObject(ctx context.Context, key string) error {
 	return nil
 }
 
-func (s *S3FileStore) DownloadBytes(ctx context.Context, key string) ([]byte, error) {
+func (s *S3FileStore) DownloadFile(ctx context.Context, key string) ([]byte, error) {
 	resp, err := s.Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.BucketName),
 		Key:    aws.String(key),
@@ -126,4 +126,49 @@ func (s *S3FileStore) DownloadBytes(ctx context.Context, key string) ([]byte, er
 
 func (s *S3FileStore) GetPath(key string) string {
 	return fmt.Sprintf("s3://%s/%s", s.BucketName, key)
+}
+
+func (s *S3FileStore) processUploadOptions(opts ...filestoreoptions.UploadOption) *filestoreoptions.UploadConfig {
+	config := &filestoreoptions.UploadConfig{
+		CacheDuration: s.DefaultObjectCacheDuration,
+	}
+
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	return config
+}
+
+func (s *S3FileStore) UploadFile(
+	ctx context.Context,
+	key string,
+	data io.Reader,
+	opts ...filestoreoptions.UploadOption,
+) error {
+	config := s.processUploadOptions(opts...)
+
+	putObjectParams := &s3.PutObjectInput{
+		Bucket: aws.String(s.BucketName),
+		Key:    aws.String(key),
+		Body:   data,
+	}
+	if config.CacheDuration != nil {
+		putObjectParams.CacheControl = aws.String(
+			fmt.Sprintf("max-age=%d, must-revalidate", int(config.CacheDuration.Seconds())),
+		)
+	}
+	if config.ContentType != "" {
+		putObjectParams.ContentType = aws.String(config.ContentType)
+	}
+	if config.Metadata != nil {
+		putObjectParams.Metadata = config.Metadata
+	}
+
+	_, err := s.Client.PutObject(ctx, putObjectParams)
+	if err != nil {
+		return fmt.Errorf("uploading %s: %w", key, err)
+	}
+
+	return nil
 }
