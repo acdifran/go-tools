@@ -770,6 +770,13 @@ func (c *ClerkHook) handleSubscriptionItemActive(
 		return err
 	}
 
+	// subscriptionItem.updated fires on any change; only adopt the plan when
+	// the item is the one now active. On trial expiry Clerk fires updated for
+	// the free item with status active (it no longer fires active for free).
+	if subscriptionItem.Status != "active" {
+		return nil
+	}
+
 	userID := subscriptionItem.Payer.UserID
 	if userID != nil && *userID != "" {
 		user, err := c.appClient.GetUserByAccountIDOrNil(ctx, *userID)
@@ -859,7 +866,7 @@ func (c *ClerkHook) HandleHooks(
 		err = c.handleOrganizationMembershipUpdated(ctx, event.Data)
 	case "organizationMembership.deleted":
 		err = c.handleOrganizationMembershipDeleted(ctx, event.Data)
-	case "subscriptionItem.active":
+	case "subscriptionItem.active", "subscriptionItem.updated":
 		err = c.handleSubscriptionItemActive(ctx, event.Data)
 	default:
 		return fmt.Errorf("unhandled event type")
