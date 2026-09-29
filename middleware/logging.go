@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/acdifran/go-tools/logger"
+	"github.com/acdifran/go-tools/redact"
 	"github.com/google/uuid"
 )
 
@@ -43,50 +44,64 @@ func (crw *customResponseWriter) Write(b []byte) (int, error) {
 	return crw.ResponseWriter.Write(b)
 }
 
-func AddRequestLogging(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		startTime := time.Now()
-		ctx = logger.AppendCtx(ctx, slog.String("request_id", uuid.NewString()))
+// defaultRedactor is compiled once: AddRequestLogging may be called per request
+// when it is wrapped in UseIf or SkipIf.
+var defaultRedactor = redact.New()
 
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			logger.ErrorContext(ctx, "Error reading body", "error", err)
-			http.Error(w, "can't read body", http.StatusBadRequest)
-			return
-		}
-		r.Body = io.NopCloser(bytes.NewReader(body))
+// RequestLogging logs every request and any failed response. Secret values are
+// hidden by r before they are logged; the handler downstream still reads the
+// exact bytes the client sent, which webhook signature verification depends on.
+func RequestLogging(r *redact.Redactor) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := req.Context()
+			startTime := time.Now()
+			ctx = logger.AppendCtx(ctx, slog.String("request_id", uuid.NewString()))
 
-		requestLogger := logger.Default().WithGroup("request").With(
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.String("remote_addr", r.RemoteAddr),
-			slog.String("user_agent", r.UserAgent()),
-			slog.String("referer", r.Referer()),
-			slog.String("body", string(body)),
-		)
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				logger.ErrorContext(ctx, "Error reading body", "error", err)
+				http.Error(w, "can't read body", http.StatusBadRequest)
+				return
+			}
+			req.Body = io.NopCloser(bytes.NewReader(body))
 
-		requestLogger.InfoContext(ctx, "Request Started")
-
-		crw := newCustomResponseWriter(w)
-		next.ServeHTTP(crw, r.WithContext(ctx))
-
-		if crw.statusCode >= 400 {
-			requestLogger.ErrorContext(
-				ctx,
-				"Request Failed",
-				slog.Int("response_code", crw.statusCode),
-				slog.String("response_body", crw.body.String()),
+			requestLogger := logger.Default().WithGroup("request").With(
+				slog.String("method", req.Method),
+				slog.String("path", req.URL.Path),
+				slog.String("remote_addr", req.RemoteAddr),
+				slog.String("user_agent", req.UserAgent()),
+				slog.String("referer", req.Referer()),
+				slog.String("body", string(r.JSON(body))),
 			)
-		}
 
-		requestLogger.InfoContext(
-			ctx,
-			"Request Finished",
-			slog.Int64("duration_ms", time.Since(startTime).Milliseconds()),
-			slog.Int("response_code", crw.statusCode),
-		)
-	})
+			requestLogger.InfoContext(ctx, "Request Started")
+
+			crw := newCustomResponseWriter(w)
+			next.ServeHTTP(crw, req.WithContext(ctx))
+
+			if crw.statusCode >= 400 {
+				requestLogger.ErrorContext(
+					ctx,
+					"Request Failed",
+					slog.Int("response_code", crw.statusCode),
+					slog.String("response_body", string(r.JSON(crw.body.Bytes()))),
+				)
+			}
+
+			requestLogger.InfoContext(
+				ctx,
+				"Request Finished",
+				slog.Int64("duration_ms", time.Since(startTime).Milliseconds()),
+				slog.Int("response_code", crw.statusCode),
+			)
+		})
+	}
+}
+
+// AddRequestLogging is RequestLogging with the default redaction keys.
+func AddRequestLogging(next http.Handler) http.Handler {
+	return RequestLogging(defaultRedactor)(next)
 }
 
 func AddViewerToLogs(fromContext func(context.Context) any) func(http.Handler) http.Handler {
