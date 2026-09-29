@@ -38,18 +38,35 @@ type Changeset interface {
 	Name() string
 	AlwaysTx() bool
 	setAlwaysTx()
+	setCtxFn(fn func(context.Context) context.Context)
 }
 
 type OneChangeset struct {
 	name string
 	alwaysTx bool
+	ctxFn func(context.Context) context.Context
 	Execer
 }
 
 type BulkChangeset struct {
 	name string
 	alwaysTx bool
+	ctxFn func(context.Context) context.Context
 	Execer
+}
+
+func (oc *OneChangeset) Exec(ctx context.Context) error {
+	if oc.ctxFn != nil {
+		ctx = oc.ctxFn(ctx)
+	}
+	return oc.Execer.Exec(ctx)
+}
+
+func (bc *BulkChangeset) Exec(ctx context.Context) error {
+	if bc.ctxFn != nil {
+		ctx = bc.ctxFn(ctx)
+	}
+	return bc.Execer.Exec(ctx)
 }
 
 func (oc *OneChangeset) Name() string {
@@ -76,12 +93,27 @@ func (bc *BulkChangeset) setAlwaysTx() {
 	bc.alwaysTx = true
 }
 
+func (oc *OneChangeset) setCtxFn(fn func(context.Context) context.Context) {
+	oc.ctxFn = fn
+}
+
+func (bc *BulkChangeset) setCtxFn(fn func(context.Context) context.Context) {
+	bc.ctxFn = fn
+}
+
 type ChangesetOption func(Changeset)
 
 // Runs this changeset as a transaction with the main builder regardless of the parent Client
 func AlwaysTx() ChangesetOption {
 	return func(c Changeset) {
 		c.setAlwaysTx()
+	}
+}
+
+// Runs this changeset with fn applied to the action's ctx, e.g. to add a value only this changeset needs
+func WithContext(fn func(context.Context) context.Context) ChangesetOption {
+	return func(c Changeset) {
+		c.setCtxFn(fn)
 	}
 }
 
