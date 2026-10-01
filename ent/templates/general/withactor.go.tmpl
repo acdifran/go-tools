@@ -213,11 +213,10 @@ type ActorIDs struct {
 }
 
 func GetActorTypeFromID(ID pulid.ID) actortype.ActorType {
-	prefix := ID[:2]
-	switch prefix {
+	switch {
 		{{- range $node := $.Nodes }}
 			{{- if (ne (index $node.Annotations "Actor") nil) }}
-				case "{{ $node.Annotations.PULID.Prefix }}":
+				case strings.HasPrefix(string(ID), "{{ $node.Annotations.PULID.Prefix }}"):
 					return actortype.{{ $node.Name }}
 			{{- end }}
 		{{- end }}
