@@ -1,0 +1,80 @@
+{{ define "fieldprivacy" }}
+{{ template "header" $ }}
+
+{{- $rulePkgs := dict }}
+{{- range $n := $.Nodes }}
+	{{- with $n.ID }}{{ if index .Annotations "FieldPrivacy" }}
+		{{- fail (printf "FieldPrivacy: %s.id cannot be private" $n.Name) }}
+	{{- end }}{{ end }}
+	{{- range $f := $n.Fields }}
+		{{- with $a := index $f.Annotations "FieldPrivacy" }}
+			{{- if $f.IsEdgeField }}
+				{{- fail (printf "FieldPrivacy: %s.%s is an edge field; zeroing it breaks edge loading" $n.Name $f.Name) }}
+			{{- end }}
+			{{- $rulePkgs = set $rulePkgs $a.RulePkg $a.RuleAlias }}
+		{{- end }}
+	{{- end }}
+{{- end }}
+
+import (
+	"context"
+	{{- range $pkg, $alias := $rulePkgs }}
+		{{ $alias }} "{{ $pkg }}"
+	{{- end }}
+)
+
+{{- range $n := $.Nodes }}
+	{{- $private := false }}
+	{{- range $f := $n.Fields }}{{ if index $f.Annotations "FieldPrivacy" }}{{ $private = true }}{{ end }}{{ end }}
+	{{- if $private }}
+		{{- $recv := $n.Receiver }}
+
+		func ({{ $recv }} *{{ $n.Name }}) applyFieldPrivacy(ctx context.Context) {
+			if vc := viewer.FromContext(ctx); vc.IsAllPowerful() || vc.IsOmni() {
+				return
+			}
+			{{- range $f := $n.Fields }}
+				{{- with $a := index $f.Annotations "FieldPrivacy" }}
+					if !{{ $a.RuleAlias }}.{{ $a.RuleName }}(ctx, {{ $recv }}) {
+						{{ $recv }}.{{ $f.StructField }} = *new({{ if $f.Nillable }}*{{ end }}{{ $f.Type }})
+					}
+				{{- end }}
+			{{- end }}
+		}
+	{{- end }}
+{{- end }}
+
+func registerFieldPrivacy(cfg *config) {
+	{{- range $n := $.Nodes }}
+		{{- $private := false }}
+		{{- range $f := $n.Fields }}{{ if index $f.Annotations "FieldPrivacy" }}{{ $private = true }}{{ end }}{{ end }}
+		{{- if $private }}
+			cfg.inters.{{ $n.Name }} = append(cfg.inters.{{ $n.Name }}, InterceptFunc(func(next Querier) Querier {
+				return QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+					v, err := next.Query(ctx, q)
+					if nodes, ok := v.([]*{{ $n.Name }}); ok {
+						for _, node := range nodes {
+							node.applyFieldPrivacy(ctx)
+						}
+					}
+					return v, err
+				})
+			}))
+			cfg.hooks.{{ $n.Name }} = append(cfg.hooks.{{ $n.Name }}, func(next Mutator) Mutator {
+				return MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
+					v, err := next.Mutate(ctx, m)
+					if node, ok := v.(*{{ $n.Name }}); ok {
+						node.applyFieldPrivacy(ctx)
+					}
+					return v, err
+				})
+			})
+		{{- end }}
+	{{- end }}
+}
+{{ end }}
+
+{{/* Registered in newConfig so every client, including enttest and scripts, gets the rules. */}}
+{{ define "config/init/fields/fieldprivacy" }}
+	registerFieldPrivacy(&cfg)
+{{ end }}
