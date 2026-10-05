@@ -5,18 +5,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/acdifran/go-tools/clerkhooks"
-	"github.com/samber/lo"
 
 	"github.com/acdifran/go-tools/membershiprole"
 	"github.com/acdifran/go-tools/pulid"
 	"github.com/acdifran/go-tools/viewer"
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
-
-	clerktools "github.com/acdifran/go-tools/clerk"
 )
 
 func EnableCORS(clientURL string) func(http.Handler) http.Handler {
@@ -28,7 +24,10 @@ func EnableCORS(clientURL string) func(http.Handler) http.Handler {
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 				w.Header().
-					Set("Access-Control-Allow-Headers", "Accept, Content-Type, X-CSRF-Token, Authorization, Vc-Override-Id, Vc-Override-Org-Id")
+					Set(
+						"Access-Control-Allow-Headers",
+						"Accept, Content-Type, X-CSRF-Token, Authorization, Vc-Override-Id, Vc-Override-Org-Id",
+					)
 				return
 			}
 
@@ -72,76 +71,15 @@ func createAuthViewerContext(
 		return viewer.LoggedOutVC()
 	}
 
-	if customClaims.UserID == "" {
-		slog.Info("missing user ID in claims, creating user", "subject", claims.Subject)
-		userData, err := clerkHook.CreateNewUserFromClerkUser(
-			viewer.AllPowerfulContext(ctx),
-			claims.Subject,
-		)
-		if err != nil {
-			slog.Error("creating user", "error", err)
-			return viewer.LoggedOutVC()
-		}
-		customClaims.UserID = string(userData.UserID)
-		customClaims.PersonalOrgID = string(lo.FromPtr(userData.PersonalOrgID))
-		customClaims.Role = userData.Role
-	}
-
-	userID := customClaims.UserID
-	orgID := customClaims.OrgID
-
-	var err error
-	var orgMembershipRole membershiprole.MembershipRole
-	var orgAccountID string
-	if orgID != "" {
-		orgAccountID = claims.ActiveOrganizationID
-		orgMembershipRole, err = clerktools.ClerkRoleToMembershipRole(
-			claims.ActiveOrganizationRole,
-		)
-		if err != nil {
-			slog.Error(
-				"invalid organization role in claims",
-				"role",
-				claims.ActiveOrganizationRole,
-				"error",
-				err,
-			)
-			return viewer.LoggedOutVC()
-		}
-	}
-
-	role := lo.Ternary(customClaims.Role == "EMPLOYEE", viewer.Employee, viewer.User)
-
-	plan := lo.Ternary(claims.ActiveOrganizationID == "", "free_user", "free_org")
-	if claims.ActiveOrganizationID != "" && customClaims.OrgPlanOverride != "" {
-		plan = customClaims.OrgPlanOverride
-	} else if claims.ActiveOrganizationID == "" && customClaims.PlanOverride != "" {
-		plan = customClaims.PlanOverride
-	} else {
-		planParts := strings.Split(customClaims.Plan, ":")
-		if len(planParts) > 1 {
-			plan = planParts[1]
-		}
-	}
-
-	if orgID == "" && customClaims.PersonalOrgID != "" {
-		orgID = customClaims.PersonalOrgID
-		orgAccountID = claims.Subject
-		orgMembershipRole = membershiprole.Admin
-	}
-
-	user := viewer.Context{
-		Role:              role,
-		ID:                pulid.ID(userID),
-		OrgID:             pulid.ID(orgID),
-		AccountID:         claims.Subject,
-		OrgAccountID:      orgAccountID,
-		OrgMembershipRole: orgMembershipRole,
-		SubscriptionPlan:  plan,
-	}
+	user := ViewerFromPrincipal(ctx, Principal{
+		ClerkUserID:  claims.Subject,
+		ClerkOrgID:   claims.ActiveOrganizationID,
+		ClerkOrgRole: claims.ActiveOrganizationRole,
+		Claims:       *customClaims,
+	}, clerkHook)
 
 	if user.Role == viewer.Employee && vcOverrideID != "" {
-		user = viewer.Context{
+		return &viewer.Context{
 			ID:                pulid.ID(vcOverrideID),
 			OrgID:             pulid.ID(vcOverrideOrgID),
 			AccountID:         "",
@@ -152,7 +90,7 @@ func createAuthViewerContext(
 		}
 	}
 
-	return &user
+	return user
 }
 
 func getOrCreateUserAndWriteCustomClaims(

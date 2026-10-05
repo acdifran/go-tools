@@ -1,6 +1,10 @@
 package clerkhooks
 
-import svix "github.com/svix/svix-webhooks/go"
+import (
+	"context"
+
+	svix "github.com/svix/svix-webhooks/go"
+)
 
 type employeeEmailConfig struct {
 	emails []string
@@ -12,6 +16,7 @@ type ClerkHook struct {
 	wh                      *svix.Webhook
 	employeeEmailConfig     employeeEmailConfig
 	shouldCreatePersonalOrg bool
+	onAuthDataChanged       func(context.Context)
 }
 
 type ClerkHookOption func(*ClerkHook)
@@ -36,6 +41,13 @@ func NewClerkWebhook(
 	}
 
 	return clerkHook
+}
+
+// Lets callers drop cached auth data (see middleware.PrincipalCache) when Clerk reports a change.
+func WithOnAuthDataChanged(fn func(context.Context)) ClerkHookOption {
+	return func(opts *ClerkHook) {
+		opts.onAuthDataChanged = fn
+	}
 }
 
 func WithPersonalOrgs() ClerkHookOption {

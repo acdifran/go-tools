@@ -40,6 +40,8 @@ github.com/acdifran/ent-contrib v1.0.1 h1:8megnSQMy+5vHnA63X8HBdYADr3BznvT4DfFii
 github.com/acdifran/ent-contrib v1.0.1/go.mod h1:dCQ/6jv74Qt4pSvZXGQL2qR49yzi9WcNAeD3rg+qZxI=
 github.com/agext/levenshtein v1.2.1 h1:QmvMAjj2aEICytGiWzmxoE0x2KZvE0fvmqMOfy2tjT8=
 github.com/agext/levenshtein v1.2.1/go.mod h1:JEDfjyjHDjOF/1e4FlBE/PkbqA9OfWu2ki2W0IB5558=
+github.com/agkloop/go_memoize v1.2.2 h1:GYVU7M3T+k4Uoz8kDagT+MZQ8iM3Ob/RZIEAYJ8kpBY=
+github.com/agkloop/go_memoize v1.2.2/go.mod h1:0PW4hJVo+0oJZ1Cpky5GQdjaDh9EeWRxL1Tklla4LCM=
 github.com/agnivade/levenshtein v1.2.1 h1:EHBY3UOn1gwdy/VbFwgo4cxecRznFk7fKWN1KOX7eoM=
 github.com/agnivade/levenshtein v1.2.1/go.mod h1:QVVI16kDrtSuwcpd0p1+xMC6Z/VfhtCyDIjcwga4/DU=
 github.com/andreyvit/diff v0.0.0-20170406064948-c7f18ee00883 h1:bvNMNQO63//z+xNgfBlViaCIJKLlCJ6/fmUseuG0wVQ=

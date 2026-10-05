@@ -873,8 +873,20 @@ func (c *ClerkHook) HandleHooks(
 	}
 
 	if err != nil {
-		err = fmt.Errorf("handling %s event: %w", event.Type, err)
+		return fmt.Errorf("handling %s event: %w", event.Type, err)
 	}
+	if c.onAuthDataChanged != nil && changesAuthData(event.Type) {
+		c.onAuthDataChanged(ctx)
+	}
+	return nil
+}
 
-	return err
+func changesAuthData(eventType string) bool {
+	switch eventType {
+	case "user.updated", "user.deleted", "organization.updated",
+		"organizationMembership.created", "organizationMembership.updated", "organizationMembership.deleted",
+		"subscriptionItem.active", "subscriptionItem.updated":
+		return true
+	}
+	return false
 }
