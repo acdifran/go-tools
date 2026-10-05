@@ -8,11 +8,11 @@ type OwnedByUser interface {
 	GetUserID() pulid.ID
 }
 
-func Employees(ctx context.Context, _ any) bool {
+func Employees(ctx context.Context, _ *{{$.Annotations.EntName}}.Client, _ any) bool {
 	return viewer.FromContext(ctx).IsEmployee()
 }
 
-func Owner(ctx context.Context, node OwnedByUser) bool {
+func Owner(ctx context.Context, _ *{{$.Annotations.EntName}}.Client, node OwnedByUser) bool {
 	vc := viewer.FromContext(ctx)
 	return vc.ID != "" && node.GetUserID() == vc.ID
 }

@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-func allowAll(context.Context, any) bool { return true }
+func allowAll(context.Context, any, any) bool { return true }
 
 type ruleHolder struct{}
 
-func (ruleHolder) allow(context.Context, any) bool { return true }
+func (ruleHolder) allow(context.Context, any, any) bool { return true }
 
 func TestFieldPrivacyResolvesTopLevelFunc(t *testing.T) {
 	a := FieldPrivacy(allowAll)
@@ -24,8 +24,8 @@ func TestFieldPrivacyResolvesTopLevelFunc(t *testing.T) {
 }
 
 func TestFieldPrivacyRejectsClosuresAndMethods(t *testing.T) {
-	for name, rule := range map[string]func(context.Context, any) bool{
-		"closure": func(context.Context, any) bool { return true },
+	for name, rule := range map[string]func(context.Context, any, any) bool{
+		"closure": func(context.Context, any, any) bool { return true },
 		"method":  ruleHolder{}.allow,
 	} {
 		t.Run(name, func(t *testing.T) {

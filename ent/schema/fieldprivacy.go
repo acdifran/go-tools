@@ -21,7 +21,7 @@ func (FieldPrivacyAnnotation) Name() string {
 }
 
 // rule must be a top-level func because the generated code calls it by name.
-func FieldPrivacy[N any](rule func(ctx context.Context, node N) bool) *FieldPrivacyAnnotation {
+func FieldPrivacy[C, N any](rule func(ctx context.Context, client C, node N) bool) *FieldPrivacyAnnotation {
 	full := runtime.FuncForPC(reflect.ValueOf(rule).Pointer()).Name()
 	slash := strings.LastIndex(full, "/")
 	pkgEnd := slash + 1 + strings.Index(full[slash+1:], ".")
