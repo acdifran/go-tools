@@ -39,6 +39,12 @@ func (crw *customResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return h.Hijack()
 }
 
+// Lets http.ResponseController reach the real writer, so streaming handlers (SSE) can flush each
+// event instead of having it held in the server's write buffer.
+func (crw *customResponseWriter) Unwrap() http.ResponseWriter {
+	return crw.ResponseWriter
+}
+
 func (crw *customResponseWriter) Write(b []byte) (int, error) {
 	crw.body.Write(b) // Capture the body
 	return crw.ResponseWriter.Write(b)
