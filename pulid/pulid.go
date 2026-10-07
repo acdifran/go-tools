@@ -1,12 +1,10 @@
 package pulid
 
 import (
-	"crypto/rand"
 	"database/sql/driver"
 	"fmt"
 	"io"
 	"strconv"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 )
@@ -14,22 +12,9 @@ import (
 // ID implements a PULID - a prefixed ULID.
 type ID string
 
-// The default entropy source.
-var defaultEntropySource *ulid.MonotonicEntropy
-
-func init() {
-	// Seed the default entropy source.
-	// TODO: To improve testability, this package should allow control of entropy sources and the time.Now implementation.
-	defaultEntropySource = ulid.Monotonic(rand.Reader, 0)
-}
-
-// newULID returns a new ULID for time.Now() using the default entropy source.
-func newULID() ulid.ULID {
-	return ulid.MustNew(ulid.Timestamp(time.Now()), defaultEntropySource)
-}
-
-// MustNew returns a new PULID for time.Now() given a prefix. This uses the default entropy source.
-func MustNew(prefix string) ID { return ID(prefix + fmt.Sprint(newULID())) }
+// ulid.Make's default entropy is locked and monotonic; a bare ulid.Monotonic source corrupts its buffer when ids
+// are created from several goroutines at once.
+func MustNew(prefix string) ID { return ID(prefix + ulid.Make().String()) }
 
 // UnmarshalGQL implements the graphql.Unmarshaler interface
 func (u *ID) UnmarshalGQL(v any) error {
