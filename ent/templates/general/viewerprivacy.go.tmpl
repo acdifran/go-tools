@@ -256,4 +256,39 @@ func UserFilterByIsViewerRule() privacy.QueryMutationRule {
 	})
 }
 
+type mutationWithClient interface {
+	Client() *{{$.Annotations.EntName}}.Client
+}
+
+// For creates: filters don't apply to inserts, so a row the new one links to through these edges is checked
+// directly. NodeExists runs in the viewer's context, so the linked type's own privacy decides.
+func DenyIfEdgesNotVisibleRule(edges ...string) privacy.MutationRule {
+	return privacy.MutationRuleFunc(func(ctx context.Context, m {{$.Annotations.EntName}}.Mutation) error {
+		mc, ok := m.(mutationWithClient)
+		if !ok {
+			return privacy.Denyf("unexpected mutation type %T", m)
+		}
+		for _, edge := range edges {
+			ids := m.AddedIDs(edge)
+			if len(ids) == 0 {
+				return privacy.Denyf("no %s passed with this %s", edge, m.Type())
+			}
+			for _, v := range ids {
+				id, ok := v.(pulid.ID)
+				if !ok {
+					return privacy.Denyf("unexpected %s id type %T", edge, v)
+				}
+				visible, err := mc.Client().NodeExists(ctx, id)
+				if err != nil {
+					return fmt.Errorf("checking %s %s: %w", edge, id, err)
+				}
+				if !visible {
+					return privacy.Denyf("%s %s is not visible to the viewer", edge, id)
+				}
+			}
+		}
+		return privacy.Skip
+	})
+}
+
 {{ end }}

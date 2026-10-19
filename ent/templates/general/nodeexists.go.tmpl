@@ -1,0 +1,25 @@
+{{ define "nodeexists" }}
+
+{{ $pkg := base $.Config.Package }}
+{{ template "header" $ }}
+
+// NodeExists reports whether id names a row visible in ctx. It runs that type's own query, so its privacy
+// policy and interceptors decide, and it selects nothing but existence.
+func (c *Client) NodeExists(ctx context.Context, id pulid.ID) (bool, error) {
+	table, err := IDToTable(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	switch table {
+	{{- range $node := $.Nodes }}
+		{{- if $node.Annotations.PULID }}
+	case {{ $node.Package }}.Table:
+		return c.{{ $node.Name }}.Query().Where({{ $node.Package }}.ID(id)).Exist(ctx)
+		{{- end }}
+	{{- end }}
+	default:
+		return false, fmt.Errorf("NodeExists: no query for table %q", table)
+	}
+}
+
+{{ end }}
