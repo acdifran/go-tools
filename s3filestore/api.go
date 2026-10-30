@@ -3,17 +3,19 @@ package s3filestore
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/url"
+
 	"github.com/acdifran/go-tools/filestoreoptions"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"io"
-	"net/url"
 )
 
 func (s *S3FileStore) processOptions(opts ...filestoreoptions.PresignOption) *filestoreoptions.PresignConfig {
 	config := &filestoreoptions.PresignConfig{
 		CacheDuration:      s.DefaultObjectCacheDuration,
 		ExpirationDuration: s.DefaultPresignExpirationDuration,
+		DownloadOptions:    nil,
 	}
 
 	for _, opt := range opts {
@@ -131,6 +133,8 @@ func (s *S3FileStore) GetPath(key string) string {
 func (s *S3FileStore) processUploadOptions(opts ...filestoreoptions.UploadOption) *filestoreoptions.UploadConfig {
 	config := &filestoreoptions.UploadConfig{
 		CacheDuration: s.DefaultObjectCacheDuration,
+		ContentType:   "",
+		Metadata:      nil,
 	}
 
 	for _, opt := range opts {

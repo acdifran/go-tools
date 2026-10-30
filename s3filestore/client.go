@@ -24,5 +24,10 @@ func New(bucketName string, region string) *S3FileStore {
 
 	s3Client := s3.NewFromConfig(cfg)
 
-	return &S3FileStore{Client: s3Client, BucketName: bucketName}
+	return &S3FileStore{
+		Client:                           s3Client,
+		BucketName:                       bucketName,
+		DefaultObjectCacheDuration:       nil,
+		DefaultPresignExpirationDuration: 0,
+	}
 }

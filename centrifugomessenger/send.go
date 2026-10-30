@@ -57,6 +57,10 @@ func (c *CentrifugoMessenger) sendMessage(
 		Channels:       channels,
 		Data:           data,
 		IdempotencyKey: fmt.Sprintf("message_%s", idepmotencyKey),
+		B64Data:        "",
+		SkipHistory:    false,
+		Tags:           nil,
+		Delta:          false,
 	})
 	if err != nil {
 		return fmt.Errorf("broadcasting message: %w", err)

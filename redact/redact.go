@@ -2,6 +2,7 @@
 package redact
 
 import (
+	"log/slog"
 	"regexp"
 	"slices"
 	"strings"
@@ -94,4 +95,51 @@ func (r *Redactor) Value(v any) any {
 	default:
 		return v
 	}
+}
+
+// A key only redacts what is logged under it; a credential can also arrive as a bare slog argument
+// or inside a formatted message, so string values are scanned for well-known credential shapes.
+var (
+	credentialHints   = []string{"earer", "eyJ", "ya29.", "sk-ant-", "sk_live_", "sk_test_"}
+	credentialPattern = regexp.MustCompile(
+		`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{16,}` +
+			`|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*` +
+			`|\bya29\.[A-Za-z0-9._-]+` +
+			`|\bsk-ant-[A-Za-z0-9_-]+` +
+			`|\bsk_(?:live|test)_[A-Za-z0-9]+`,
+	)
+)
+
+// String replaces bearer tokens, JWTs and common provider API keys in s with Redacted.
+func String(s string) string {
+	for _, hint := range credentialHints {
+		if strings.Contains(s, hint) {
+			return credentialPattern.ReplaceAllString(s, Redacted)
+		}
+	}
+	return s
+}
+
+// Attr is a slog.HandlerOptions.ReplaceAttr step: it redacts the value of a configured key, the
+// configured keys of a decoded map, and any credential String finds in a string or error value.
+func (r *Redactor) Attr(a slog.Attr) slog.Attr {
+	if r == nil {
+		return a
+	}
+	if _, ok := r.keys[a.Key]; ok {
+		return slog.String(a.Key, Redacted)
+	}
+	switch v := a.Value.Any().(type) {
+	case string:
+		if s := String(v); s != v {
+			return slog.String(a.Key, s)
+		}
+	case map[string]any:
+		return slog.Any(a.Key, r.Value(v))
+	case error:
+		if s := String(v.Error()); s != v.Error() {
+			return slog.String(a.Key, s)
+		}
+	}
+	return a
 }

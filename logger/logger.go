@@ -9,10 +9,13 @@ import (
 	"entgo.io/ent"
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/acdifran/go-tools/pulid"
+	"github.com/acdifran/go-tools/redact"
 	"github.com/samber/lo"
 )
 
 type ctxKey string
+
+var logRedactor = redact.New()
 
 const (
 	slogFields     ctxKey     = "slog_fields"

@@ -22,9 +22,14 @@ type ActionOption func(*ActionDef)
 
 func NewAction(name string, actionType ActionType, setters ...ActionOption) *ActionDef {
 	action := &ActionDef{
-		Name:    name,
-		WrapTxn: true,
-		Type:    actionType,
+		Name:           name,
+		WrapTxn:        true,
+		Type:           actionType,
+		NoArgs:         false,
+		NillableArgs:   false,
+		DocComment:     "",
+		GenericEntType: "",
+		IsDefault:      false,
 	}
 
 	for _, setter := range setters {

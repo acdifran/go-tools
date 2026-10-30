@@ -31,7 +31,13 @@ func New(bucketName string, opts ...Option) *GCloudFileStore {
 		log.Fatalf("Error initializing Google Cloud Storage client: %v", err)
 	}
 
-	g := &GCloudFileStore{Client: client, BucketName: bucketName}
+	g := &GCloudFileStore{
+		Client:                           client,
+		BucketName:                       bucketName,
+		ServiceAccount:                   "",
+		DefaultObjectCacheDuration:       nil,
+		DefaultPresignExpirationDuration: 0,
+	}
 	for _, opt := range opts {
 		opt(g)
 	}

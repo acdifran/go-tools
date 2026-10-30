@@ -34,6 +34,7 @@ func NewClerkWebhook(
 			domain: "",
 		},
 		shouldCreatePersonalOrg: false,
+		onAuthDataChanged:       nil,
 	}
 
 	for _, opt := range opts {

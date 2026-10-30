@@ -25,7 +25,7 @@ import (
 	"github.com/acdifran/go-tools/viewer"
 )
 
-var NotOrgMemberError = errors.New("user is not a member of the organization")
+var ErrNotOrgMember = errors.New("user is not a member of the organization")
 
 // Principal is what a viewer is built from, so session tokens and OAuth tokens produce the same viewer.
 type Principal struct {
@@ -179,7 +179,7 @@ func addOrgClaims(ctx context.Context, p *Principal) error {
 	if len(memberships.OrganizationMemberships) == 0 {
 		return fmt.Errorf(
 			"%w: user %s, organization %s",
-			NotOrgMemberError,
+			ErrNotOrgMember,
 			p.ClerkUserID,
 			p.ClerkOrgID,
 		)

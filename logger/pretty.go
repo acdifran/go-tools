@@ -107,7 +107,7 @@ func (h *PrettyHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	// Add context attrs directly to output (bypasses groups)
 	for _, attr := range ctxAttrs {
-		output[attr.Key] = attr.Value.Any()
+		output[attr.Key] = logRedactor.Attr(attr).Value.Any()
 	}
 
 	// Extract and remove built-in fields
@@ -164,6 +164,7 @@ func NewPrettyHandler(opts *PrettyHandlerOptions) *PrettyHandler {
 	hopts := &slog.HandlerOptions{
 		Level: level,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			a = logRedactor.Attr(a)
 			if groups != nil {
 				return a
 			}

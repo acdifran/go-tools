@@ -19,7 +19,7 @@ func (e *Error) ClientMsg() string {
 }
 
 func NewClientError(msg string, clientmsg string) *Error {
-	return &Error{msg: msg, clientmsg: clientmsg}
+	return &Error{err: nil, msg: msg, clientmsg: clientmsg}
 }
 
 func Wrap(err error, clientMsg string) error {
@@ -35,5 +35,9 @@ func (err *Error) Unwrap() error {
 }
 
 func NewUnauthorizedError() *Error {
-	return &Error{clientmsg: "You are not authorized to view this content", msg: "Unauthorized"}
+	return &Error{
+		err:       nil,
+		clientmsg: "You are not authorized to view this content",
+		msg:       "Unauthorized",
+	}
 }

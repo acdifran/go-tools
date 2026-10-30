@@ -1,6 +1,8 @@
 package redact
 
 import (
+	"errors"
+	"log/slog"
 	"maps"
 	"reflect"
 	"testing"
@@ -222,4 +224,54 @@ func deepCopy(m map[string]any) map[string]any {
 		}
 	}
 	return out
+}
+
+func TestString(t *testing.T) {
+	jwt := "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlLXZhbHVl"
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"bearer header", "Bearer abc.def-123456789xyz", Redacted},
+		{"bearer as a word", "missing bearer token", "missing bearer token"},
+		{"bearer inside text", "auth failed for bearer tok_1234567890abcdef: denied", "auth failed for " + Redacted + ": denied"},
+		{"bare jwt", "token " + jwt, "token " + Redacted},
+		{"google access token", "ya29.a0AfB_byC-xyz", Redacted},
+		{"anthropic key", "key=sk-ant-api03-abc_DEF", "key=" + Redacted},
+		{"stripe-style key", "sk_live_51Habc", Redacted},
+		{"ordinary text", "connection 01HXYZ synced 12 records", "connection 01HXYZ synced 12 records"},
+		{"short eyJ word", "eyJustKidding.ab.cd", "eyJustKidding.ab.cd"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := String(tt.in); got != tt.want {
+				t.Errorf("String(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAttr(t *testing.T) {
+	r := New()
+	tests := []struct {
+		name string
+		in   slog.Attr
+		want slog.Attr
+	}{
+		{"configured key", slog.String("password", "hunter2"), slog.String("password", Redacted)},
+		{"bare bearer argument", slog.String("!BADKEY", "Bearer abc1234567890defghi"), slog.String("!BADKEY", Redacted)},
+		{"credential in error", slog.Any("error", errors.New("bad token Bearer abc1234567890defghi")), slog.String("error", "bad token "+Redacted)},
+		{"map value", slog.Any("vars", map[string]any{"apiKey": "x", "n": 1}), slog.Any("vars", map[string]any{"apiKey": Redacted, "n": 1})},
+		{"untouched string", slog.String("connectionID", "01HXYZ"), slog.String("connectionID", "01HXYZ")},
+		{"untouched int", slog.Int("count", 3), slog.Int("count", 3)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := r.Attr(tt.in)
+			if got.Key != tt.want.Key || !reflect.DeepEqual(got.Value.Any(), tt.want.Value.Any()) {
+				t.Errorf("Attr(%v) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
 }

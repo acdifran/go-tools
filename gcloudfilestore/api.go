@@ -16,6 +16,7 @@ func (g *GCloudFileStore) processOptions(opts ...filestoreoptions.PresignOption)
 	config := &filestoreoptions.PresignConfig{
 		CacheDuration:      g.DefaultObjectCacheDuration,
 		ExpirationDuration: g.DefaultPresignExpirationDuration,
+		DownloadOptions:    nil,
 	}
 
 	for _, opt := range opts {
@@ -131,6 +132,8 @@ func (g *GCloudFileStore) GetPath(key string) string {
 func (g *GCloudFileStore) processUploadOptions(opts ...filestoreoptions.UploadOption) *filestoreoptions.UploadConfig {
 	config := &filestoreoptions.UploadConfig{
 		CacheDuration: g.DefaultObjectCacheDuration,
+		ContentType:   "",
+		Metadata:      nil,
 	}
 
 	for _, opt := range opts {
@@ -148,6 +151,9 @@ func (g *GCloudFileStore) UploadFile(
 ) error {
 	config := g.processUploadOptions(opts...)
 
+	// Close commits whatever was written, so a failed copy cancels this context instead to abort the upload.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	writer := g.Client.Bucket(g.BucketName).Object(key).NewWriter(ctx)
 	if config.CacheDuration != nil {
 		writer.CacheControl = fmt.Sprintf("max-age=%d, must-revalidate", int(config.CacheDuration.Seconds()))
@@ -160,7 +166,8 @@ func (g *GCloudFileStore) UploadFile(
 	}
 
 	if _, err := io.Copy(writer, data); err != nil {
-		writer.Close()
+		cancel()
+		_ = writer.Close()
 		return fmt.Errorf("uploading %s: %w", key, err)
 	}
 
