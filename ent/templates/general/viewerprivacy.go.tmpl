@@ -260,8 +260,10 @@ type mutationWithClient interface {
 	Client() *{{$.Annotations.EntName}}.Client
 }
 
-// For creates: filters don't apply to inserts, so a row the new one links to through these edges is checked
-// directly. NodeExists runs in the viewer's context, so the linked type's own privacy decides.
+// Filters scope which rows a write touches but never the ids it writes, so a row linked through these
+// edges is checked directly, on creates and on updates that move a link. NodeExists runs in the viewer's
+// context, so the linked type's own privacy decides. An edge the mutation doesn't set has nothing to
+// check; ent's own validation rejects a create missing a required one.
 func DenyIfEdgesNotVisibleRule(edges ...string) privacy.MutationRule {
 	return privacy.MutationRuleFunc(func(ctx context.Context, m {{$.Annotations.EntName}}.Mutation) error {
 		mc, ok := m.(mutationWithClient)
@@ -269,11 +271,7 @@ func DenyIfEdgesNotVisibleRule(edges ...string) privacy.MutationRule {
 			return privacy.Denyf("unexpected mutation type %T", m)
 		}
 		for _, edge := range edges {
-			ids := m.AddedIDs(edge)
-			if len(ids) == 0 {
-				return privacy.Denyf("no %s passed with this %s", edge, m.Type())
-			}
-			for _, v := range ids {
+			for _, v := range m.AddedIDs(edge) {
 				id, ok := v.(pulid.ID)
 				if !ok {
 					return privacy.Denyf("unexpected %s id type %T", edge, v)
