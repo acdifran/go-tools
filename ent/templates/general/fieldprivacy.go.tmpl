@@ -74,6 +74,9 @@ func registerFieldPrivacy(cfg *config) {
 			cfg.hooks.{{ $n.Name }} = append(cfg.hooks.{{ $n.Name }}, func(next Mutator) Mutator {
 				return MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
 					v, err := next.Mutate(ctx, m)
+					if err != nil {
+						return v, err
+					}
 					node, ok := v.(*{{ $n.Name }})
 					if !ok || fieldPrivacyBypassed(ctx) {
 						return v, err
