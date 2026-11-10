@@ -1,0 +1,158 @@
+{{/* Loaded only by apps that use softdelete.Mixin: it replaces ent's edge predicate templates. Needs
+softdeletegen.FuncMap and softdeletegen.Hook. */}}
+{{ define "softdelete" }}
+
+{{ template "header" $ }}
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/acdifran/go-tools/ent/softdelete"
+)
+
+var SoftDeleteEdges = []softdelete.Edge{
+	{{- range $node := $.Nodes }}
+		{{- range $e := softDeleteEnforced $node }}
+	{Parent: "{{ $node.Name }}", Name: "{{ $e.Name }}", Child: "{{ $e.Type.Name }}", Mode: "{{ softDeleteMode $e }}"},
+		{{- end }}
+	{{- end }}
+}
+
+func init() {
+	{{- range $node := $.Nodes }}
+		{{- if softDeleteTracked $node }}
+	softdelete.Register("{{ $node.Name }}", softdelete.Node{
+		Table: "{{ $node.Table }}",
+		SoftDeleted: {{ softDeleted $node }},
+		Parents: []softdelete.Parent{
+			{{- range $e := softDeleteHides $node }}
+			{Entity: "{{ $e.Type.Name }}", Column: "{{ $e.Rel.Column }}"},
+			{{- end }}
+		},
+	})
+		{{- end }}
+	{{- end }}
+}
+
+{{- range $node := $.Nodes }}
+
+func (q *{{ $node.QueryName }}) SoftDeleteEntity() string { return "{{ $node.Name }}" }
+
+func (q *{{ $node.QueryName }}) SoftDeleteWhereP(ps ...func(*sql.Selector)) {
+	for _, p := range ps {
+		q.predicates = append(q.predicates, predicate.{{ $node.Name }}(p))
+	}
+}
+	{{- if softDeleted $node }}
+
+func (m *{{ $node.MutationName }}) SoftDeleteDispatch(ctx context.Context) (Value, error) {
+	return m.Client().Mutate(ctx, m)
+}
+
+func (m *{{ $node.MutationName }}) SoftDeleteCascade(ctx context.Context, stamp time.Time, next Mutator) (Value, error) {
+		{{- with $cascades := softDeleteCascades $node }}
+	c := m.Client()
+	if _, err := m.Tx(); err != nil {
+		tx := TxFromContext(ctx)
+		if tx == nil {
+			return softDeleteInTx(ctx, c, m)
+		}
+		c = tx.Client()
+	}
+	// Read first: once stamped, the rows no longer match the live-only predicate.
+	ids, err := m.IDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading soft-deleted rows: %w", err)
+	}
+	v, err := next.Mutate(ctx, m)
+	if err != nil || len(ids) == 0 {
+		return v, err
+	}
+			{{- range $e := $cascades }}
+	if err := c.{{ $e.Type.Name }}.Update().
+		Where({{ $e.Type.Package }}.{{ $e.Ref.Field.StructField }}In(ids...)).
+		SetDeleteTime(stamp).
+		Exec(ctx); err != nil {
+		return nil, fmt.Errorf("cascading soft delete to {{ $e.Type.Name }}: %w", err)
+	}
+			{{- end }}
+	return v, nil
+		{{- else }}
+	return next.Mutate(ctx, m)
+		{{- end }}
+}
+	{{- end }}
+{{- end }}
+
+// A mutation's client is fixed when it is built, so the tree only goes atomically by re-dispatching
+// through a transactional client. The tx in ctx is how the next pass finds it.
+func softDeleteInTx(ctx context.Context, c *Client, m Mutation) (Value, error) {
+	tx, err := c.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("starting soft delete transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	v, err := tx.Client().Mutate(NewTxContext(ctx, tx), m)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing soft delete: %w", err)
+	}
+	return v, nil
+}
+
+{{ end }}
+
+{{ define "import/additional/softdelete" }}"github.com/acdifran/go-tools/ent/softdelete"{{ end }}
+
+{{/* Generated queries drop ctx, and edge predicates need it to see softdelete.Skip. */}}
+{{ define "dialect/sql/query/selector/softdelete" }}
+	selector.WithContext(ctx)
+{{ end }}
+
+{{/* Replaces ent's builtin so a deleted row doesn't count as a neighbor. */}}
+{{ define "dialect/sql/predicate/edge/has" -}}
+	{{- $e := $.Scope.Edge -}}
+	func(s *sql.Selector) {
+		{{- if softDeleteTracked $e.Type }}
+		sqlgraph.HasNeighborsWith(s, new{{ pascal $e.Name }}Step(), func(s *sql.Selector) {
+			softdelete.Exclude(s, "{{ $e.Type.Name }}")
+		})
+		{{- else }}
+		step := sqlgraph.NewStep(
+			{{- if $.HasCompositeID }}
+				sqlgraph.From(Table, {{ $e.ColumnConstant }}),
+			{{- else }}
+				sqlgraph.From(Table, {{ $.ID.Constant }}),
+			{{- end }}
+			sqlgraph.Edge(sqlgraph.{{ $e.Rel.Type }}, {{ $e.IsInverse }}, {{ $e.TableConstant }},
+				{{- if $e.M2M -}}
+					{{ $e.PKConstant }}...
+				{{- else -}}
+					{{ $e.ColumnConstant }}
+				{{- end -}}
+			),
+		)
+		sqlgraph.HasNeighbors(s, step)
+		{{- end }}
+	}
+{{- end }}
+
+{{/* Replaces ent's builtin so a deleted row doesn't match, even if a caller forgets to say so. */}}
+{{ define "dialect/sql/predicate/edge/haswith" -}}
+	{{- $e := $.Scope.Edge -}}
+	func(s *sql.Selector) {
+		step := new{{ pascal $e.Name }}Step()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			{{- if softDeleteTracked $e.Type }}
+			softdelete.Exclude(s, "{{ $e.Type.Name }}")
+			{{- end }}
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	}
+{{- end }}

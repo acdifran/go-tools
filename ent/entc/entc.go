@@ -101,8 +101,7 @@ func LoadTemplates(
 						Funcs(funcMap).
 						ParseFiles(filepath.Join(path, file.Name()))
 					if err != nil {
-						log.Printf("error parsing template %s: %v", file.Name(), err)
-						continue
+						return nil, fmt.Errorf("parsing template %s: %w", file.Name(), err)
 					}
 					templates = append(templates, template)
 				}
@@ -123,25 +122,23 @@ func LoadEmbededTemplates(
 	for _, path := range paths {
 		files, err := fs.ReadDir(embeddedFS, path)
 		if err != nil {
-			log.Printf("error reading embedded templates: %v", err)
-		} else {
-			for _, file := range files {
-				if filepath.Ext(file.Name()) == ".tmpl" {
-					data, err := fs.ReadFile(embeddedFS, path+"/"+file.Name())
-					if err != nil {
-						log.Printf("error reading embedded template %s: %v", file.Name(), err)
-						continue
-					}
-					template, err := gen.NewTemplate(strings.TrimSuffix(file.Name(), ".go.tmpl")).
-						Funcs(funcMap).
-						Parse(string(data))
-					if err != nil {
-						log.Printf("error parsing embedded template %s: %v", file.Name(), err)
-						continue
-					}
-					templates = append(templates, template)
-				}
+			return nil, fmt.Errorf("reading embedded templates %s: %w", path, err)
+		}
+		for _, file := range files {
+			if filepath.Ext(file.Name()) != ".tmpl" {
+				continue
 			}
+			data, err := fs.ReadFile(embeddedFS, path+"/"+file.Name())
+			if err != nil {
+				return nil, fmt.Errorf("reading embedded template %s: %w", file.Name(), err)
+			}
+			template, err := gen.NewTemplate(strings.TrimSuffix(file.Name(), ".go.tmpl")).
+				Funcs(funcMap).
+				Parse(string(data))
+			if err != nil {
+				return nil, fmt.Errorf("parsing embedded template %s: %w", file.Name(), err)
+			}
+			templates = append(templates, template)
 		}
 	}
 
