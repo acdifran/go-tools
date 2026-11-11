@@ -61,6 +61,7 @@ func run(ctx context.Context, schemaPath, version string, atlasArgs []string) er
 	}
 	args := append([]string{"migrate", "diff", "--to", "file://" + desired}, atlasArgs...)
 	cmd := exec.CommandContext(ctx, "atlas", args...)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	// Stdin lets atlas ask whether a dropped and added column is a rename.
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd.Run()
 }
