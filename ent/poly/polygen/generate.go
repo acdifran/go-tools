@@ -29,6 +29,7 @@ func Generate(schemaPath string, cfg *gen.Config, options ...entc.Option) (err e
 			return err
 		}
 	}
+	cfg.Templates = append(cfg.Templates, gen.MustParse(gen.NewTemplate("poly").Parse(initTmpl)))
 	undo, err := gen.PrepareEnv(cfg)
 	if err != nil {
 		return err
@@ -55,14 +56,25 @@ func Generate(schemaPath string, cfg *gen.Config, options ...entc.Option) (err e
 	if err := normalizePkg(cfg); err != nil {
 		return err
 	}
-	return graph.Gen()
+	if err := graph.Gen(); err != nil {
+		return err
+	}
+	return writeOutput(graph)
 }
+
+// Ent's newConfig has no hook point for client hooks other than this one, which runs before options apply.
+const initTmpl = `{{ define "config/init/fields/poly" }}
+	polyInitConfig(&cfg)
+{{ end }}`
 
 // LoadGraph is entc.LoadGraph with the poly step, for anything else that reads the graph: template builders and
 // migration diffs.
 func LoadGraph(schemaPath string, cfg *gen.Config) (*gen.Graph, error) {
 	spec, err := (&load.Config{Path: schemaPath, BuildFlags: cfg.BuildFlags}).Load()
 	if err != nil {
+		return nil, err
+	}
+	if err := expand(spec); err != nil {
 		return nil, err
 	}
 	cfg.Schema = spec.PkgPath
