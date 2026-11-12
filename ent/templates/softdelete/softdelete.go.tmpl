@@ -13,10 +13,8 @@ import (
 )
 
 var SoftDeleteEdges = []softdelete.Edge{
-	{{- range $node := $.Nodes }}
-		{{- range $e := softDeleteEnforced $node }}
-	{Parent: "{{ $node.Name }}", Name: "{{ $e.Name }}", Child: "{{ $e.Type.Name }}", Mode: "{{ softDeleteMode $e }}"},
-		{{- end }}
+	{{- range $r := softDeleteEnforced $ }}
+	{On: "{{ $r.On.Name }}", Name: "{{ $r.Decl.Name }}", Parent: "{{ $r.Parent.Name }}", Child: "{{ $r.Child.Name }}", Mode: "{{ $r.Mode }}"},
 	{{- end }}
 }
 
@@ -27,8 +25,8 @@ func init() {
 		Table: "{{ $node.Table }}",
 		SoftDeleted: {{ softDeleted $node }},
 		Parents: []softdelete.Parent{
-			{{- range $e := softDeleteHides $node }}
-			{Entity: "{{ $e.Type.Name }}", Column: "{{ $e.Rel.Column }}"},
+			{{- range $r := softDeleteHides $node }}
+			{Entity: "{{ $r.Parent.Name }}", Column: "{{ $r.Column }}"},
 			{{- end }}
 		},
 	})
@@ -52,7 +50,7 @@ func (m *{{ $node.MutationName }}) SoftDeleteDispatch(ctx context.Context) (Valu
 }
 
 func (m *{{ $node.MutationName }}) SoftDeleteCascade(ctx context.Context, stamp time.Time, next Mutator) (Value, error) {
-		{{- with $cascades := softDeleteCascades $node }}
+		{{- with $cascades := softDeleteCascades $ $node }}
 	c := m.Client()
 	if _, err := m.Tx(); err != nil {
 		tx := TxFromContext(ctx)
@@ -70,12 +68,12 @@ func (m *{{ $node.MutationName }}) SoftDeleteCascade(ctx context.Context, stamp 
 	if err != nil || len(ids) == 0 {
 		return v, err
 	}
-			{{- range $e := $cascades }}
-	if err := c.{{ $e.Type.Name }}.Update().
-		Where({{ $e.Type.Package }}.{{ $e.Ref.Field.StructField }}In(ids...)).
+			{{- range $r := $cascades }}
+	if err := c.{{ $r.Child.Name }}.Update().
+		Where({{ $r.Child.Package }}.{{ $r.FK.Field.StructField }}In(ids...)).
 		SetDeleteTime(stamp).
 		Exec(ctx); err != nil {
-		return nil, fmt.Errorf("cascading soft delete to {{ $e.Type.Name }}: %w", err)
+		return nil, fmt.Errorf("cascading soft delete to {{ $r.Child.Name }}: %w", err)
 	}
 			{{- end }}
 	return v, nil

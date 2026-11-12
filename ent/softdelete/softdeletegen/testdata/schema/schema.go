@@ -22,8 +22,11 @@ func (Workflow) Edges() []ent.Edge {
 		edge.To("runs", WorkflowRun.Type).Annotations(softdelete.Hide()),
 		edge.To("event_source", Connection.Type).Field("event_source_id").Unique().
 			Annotations(softdelete.Keep("a workflow outlives the connection that triggers it")),
+		edge.To("tags", Tag.Type).Annotations(softdelete.Keep("tags are shared labels")),
 	}
 }
+
+type Tag struct{ ent.Schema }
 
 type WorkflowPlan struct{ ent.Schema }
 
@@ -59,5 +62,22 @@ func (AssetFolder) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("children", AssetFolder.Type).Annotations(softdelete.Cascade()).
 			From("parent").Field("parent_id").Unique(),
+	}
+}
+
+// Defines its relations itself, so its declarations sit on its own edges.
+type Note struct{ ent.Schema }
+
+func (Note) Mixin() []ent.Mixin { return []ent.Mixin{softdelete.Mixin{}} }
+
+func (Note) Fields() []ent.Field {
+	return []ent.Field{field.Int("workflow_id").Optional(), field.Int("connection_id").Optional()}
+}
+
+func (Note) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("workflow", Workflow.Type).Field("workflow_id").Unique().Annotations(softdelete.Hide()),
+		edge.To("connection", Connection.Type).Field("connection_id").Unique().
+			Annotations(softdelete.Cascade()),
 	}
 }

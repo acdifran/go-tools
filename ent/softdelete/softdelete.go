@@ -25,7 +25,8 @@ const (
 	ModeKeep    Mode = "keep"
 )
 
-// Generation fails on a child edge without one, and the filters and cascades are generated from it.
+// It goes on the edge.To of a relation, next to entsql.OnDelete, whichever side that is. Generation fails on a
+// relation into a soft-deleted entity without one, and the filters and cascades are generated from it.
 type Annotation struct {
 	Mode   Mode
 	Reason string
@@ -53,9 +54,11 @@ func Keep(reason string) Annotation {
 	return Annotation{Mode: ModeKeep, Reason: reason}
 }
 
+// A Hide or Cascade relation. On and Name are the edge.To it is declared on, on either the parent or the child.
 type Edge struct {
-	Parent string
+	On     string
 	Name   string
+	Parent string
 	Child  string
 	Mode   Mode
 }
