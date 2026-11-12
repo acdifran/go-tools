@@ -109,6 +109,7 @@ type RefAnnotation struct {
 	Immutable  bool
 	Ref        string
 	Implements []string
+	Comment    string
 	// Annotations for every member edge, and for one member's edge, keyed by annotation name.
 	All     map[string]json.RawMessage
 	Members map[string]map[string]json.RawMessage
@@ -123,6 +124,7 @@ type EdgeBuilder struct {
 	immutable  bool
 	ref        string
 	implements []string
+	comment    string
 	all        []schema.Annotation
 	members    map[string][]schema.Annotation
 	hooks      []ent.Hook
@@ -137,6 +139,7 @@ func To(name string, p Pattern) *EdgeBuilder {
 		immutable:  false,
 		ref:        "",
 		implements: nil,
+		comment:    "",
 		all:        nil,
 		members:    map[string][]schema.Annotation{},
 		hooks:      nil,
@@ -154,6 +157,9 @@ func (b *EdgeBuilder) Implements(names ...string) *EdgeBuilder {
 	b.implements = append(b.implements, names...)
 	return b
 }
+
+// Comment is the edge's GraphQL description.
+func (b *EdgeBuilder) Comment(c string) *EdgeBuilder { b.comment = c; return b }
 
 func (b *EdgeBuilder) Annotations(as ...schema.Annotation) *EdgeBuilder {
 	b.all = append(b.all, as...)
@@ -187,6 +193,7 @@ func (b *EdgeBuilder) Descriptor() *edge.Descriptor {
 		Immutable:  b.immutable,
 		Ref:        b.ref,
 		Implements: b.implements,
+		Comment:    b.comment,
 		All:        encode(b.all),
 		Members:    map[string]map[string]json.RawMessage{},
 	}

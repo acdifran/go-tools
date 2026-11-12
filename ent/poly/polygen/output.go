@@ -446,6 +446,9 @@ func polyInitConfig(cfg *config) {
 {{- range $p := .Patterns }}
 
 type {{ $p.Name }} interface {
+	{{- if and $.GraphQL $p.GraphQL }}
+	Noder
+	{{- end }}
 	is{{ $p.Name }}()
 	GetID() {{ $p.IDType }}
 	{{- range $p.Shared }}

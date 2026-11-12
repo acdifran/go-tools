@@ -15,10 +15,12 @@ import (
 )
 
 type PolyEdge struct {
-	Name     string
-	Pattern  string
-	Optional bool
-	Members  []PolyMember
+	Name       string
+	Pattern    string
+	Optional   bool
+	Implements []string
+	Comment    string
+	Members    []PolyMember
 }
 
 type PolyMember struct {
@@ -97,7 +99,14 @@ func expandTPC(
 	ref poly.RefAnnotation,
 	members []*load.Schema,
 ) ([]*load.Edge, PolyEdge, error) {
-	pe := PolyEdge{Name: name, Pattern: ref.Pattern, Optional: ref.Optional, Members: nil}
+	pe := PolyEdge{
+		Name:       name,
+		Pattern:    ref.Pattern,
+		Optional:   ref.Optional,
+		Implements: ref.Implements,
+		Comment:    ref.Comment,
+		Members:    nil,
+	}
 	var edges []*load.Edge
 	cols := make([]string, len(members))
 	for i, m := range members {
