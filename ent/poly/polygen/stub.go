@@ -98,7 +98,7 @@ func ({{ .Name }}Pattern) Edges() []ent.Edge { return {{ .Name }}{}.Edges() }
 
 func ({{ .Name }}Pattern) Indexes() []ent.Index { return {{ .Name }}{}.Indexes() }
 
-func ({{ .Name }}Pattern) Hooks() []ent.Hook { return {{ .Name }}{}.Hooks() }
+func ({{ .Name }}Pattern) Hooks() []ent.Hook { return poly.TPHHooks({{ .Name }}{}) }
 
 func ({{ .Name }}Pattern) Interceptors() []ent.Interceptor { return {{ .Name }}{}.Interceptors() }
 

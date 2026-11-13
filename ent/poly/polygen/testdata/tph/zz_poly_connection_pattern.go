@@ -21,7 +21,7 @@ func (ConnectionPattern) Edges() []ent.Edge { return Connection{}.Edges() }
 
 func (ConnectionPattern) Indexes() []ent.Index { return Connection{}.Indexes() }
 
-func (ConnectionPattern) Hooks() []ent.Hook { return Connection{}.Hooks() }
+func (ConnectionPattern) Hooks() []ent.Hook { return poly.TPHHooks(Connection{}) }
 
 func (ConnectionPattern) Interceptors() []ent.Interceptor { return Connection{}.Interceptors() }
 

@@ -39,6 +39,17 @@ type tphVariant struct {
 	Renames             map[string]string
 }
 
+// The table's column is optional, so ent gives it a Clear method, but like ent's own required fields the variant's
+// builders leave it out.
+func (v *tphVariant) clearsRequired(method string) bool {
+	for _, f := range v.Fields {
+		if f.Required && method == "Clear"+f.Base.StructField() {
+			return true
+		}
+	}
+	return false
+}
+
 type tphPattern struct {
 	Name          string
 	Base          *gen.Type

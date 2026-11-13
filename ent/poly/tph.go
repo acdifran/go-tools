@@ -1,6 +1,7 @@
 package poly
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -131,18 +132,7 @@ func TPHFields(p Pattern) []ent.Field {
 // the BaseAnnotation polygen reads.
 func TPHAnnotations(p Pattern) []schema.Annotation {
 	anns := append([]schema.Annotation{}, p.Annotations()...)
-	var disc string
-	for _, a := range anns {
-		if d, ok := a.(DiscriminatorAnnotation); ok {
-			disc = d.Field
-		}
-	}
-	if disc == "" {
-		panic(fmt.Sprintf(
-			"poly: TPH pattern %s needs poly.Discriminator in its Annotations",
-			Name(p),
-		))
-	}
+	disc := discriminatorOf(p)
 	base := BaseAnnotation{Pattern: Name(p), Storage: StorageTPH, Discriminator: disc, Members: nil}
 	checks := map[string]string{}
 	for _, v := range variantsOf(p) {
@@ -184,4 +174,58 @@ func Snake(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+func discriminatorOf(p Pattern) string {
+	for _, a := range p.Annotations() {
+		if d, ok := a.(DiscriminatorAnnotation); ok {
+			return d.Field
+		}
+	}
+	panic(fmt.Sprintf("poly: TPH pattern %s needs poly.Discriminator in its Annotations", Name(p)))
+}
+
+type requiredColumn struct{ column, label string }
+
+// TPHHooks are the pattern's hooks plus the Go side of each variant's required fields, which the table can only make
+// nullable: like ent's required fields, a create of the variant must set them and no write may clear them. The
+// table's CHECKs still catch writes that skip hooks, such as an upsert's update or raw SQL.
+func TPHHooks(p Pattern) []ent.Hook {
+	hooks := append([]ent.Hook{}, p.Hooks()...)
+	required := map[string][]requiredColumn{}
+	for _, v := range variantsOf(p) {
+		bm := v.member(p)
+		for _, f := range v.fields {
+			if d := f.Descriptor(); !d.Optional {
+				required[bm.Value] = append(required[bm.Value], requiredColumn{
+					column: bm.Prefix + "_" + d.Name,
+					label:  bm.Type + "." + d.Name,
+				})
+			}
+		}
+	}
+	if len(required) == 0 {
+		return hooks
+	}
+	disc := discriminatorOf(p)
+	return append(hooks, func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			for _, cols := range required {
+				for _, c := range cols {
+					if m.FieldCleared(c.column) {
+						return nil, fmt.Errorf("ent: required field %q can't be cleared", c.label)
+					}
+				}
+			}
+			if m.Op().Is(ent.OpCreate) {
+				v, _ := m.Field(disc)
+				for _, c := range required[fmt.Sprint(v)] {
+					if _, ok := m.Field(c.column); !ok {
+						return nil, fmt.Errorf("ent: missing required field %q", c.label)
+					}
+				}
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
 }

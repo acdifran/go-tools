@@ -222,7 +222,7 @@ func renderTyped(b *strings.Builder, p *tphPattern, v *tphVariant) {
 		}
 		for _, m := range bd.methods {
 			own, ok := p.own(v, m.Name)
-			if !ok || own == m.Name || !strings.HasPrefix(m.Results, "*"+B) {
+			if !ok || own == m.Name || !strings.HasPrefix(m.Results, "*"+B) || v.clearsRequired(m.Name) {
 				continue
 			}
 			fmt.Fprintf(
