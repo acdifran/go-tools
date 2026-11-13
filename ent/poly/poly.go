@@ -5,6 +5,7 @@ package poly
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 
 	"entgo.io/ent"
@@ -15,7 +16,10 @@ import (
 
 type Storage string
 
-const StorageTPC Storage = "TPC"
+const (
+	StorageTPC Storage = "TPC"
+	StorageTPH Storage = "TPH"
+)
 
 // Pattern is an abstract type. Its methods are read like a schema's: Fields, Edges, Indexes, Hooks, Policy, Mixin
 // and Annotations are given to every member.
@@ -30,6 +34,8 @@ type Pattern interface {
 type patternBase struct{ mixin.Schema }
 
 func (patternBase) Mixin() []ent.Mixin { return nil }
+
+func (patternBase) Patterns() []Pattern { return nil }
 
 // TPC stores each member in its own table; an edge to the pattern is one foreign key per member.
 type TPC struct{ patternBase }
@@ -58,9 +64,40 @@ type memberMixin struct {
 	p Pattern
 }
 
-// Member makes the schema a member of the pattern. It goes in Mixin, after the schema's id mixin: a TPC
-// member keeps its own id, whose prefix is how an id says which member it belongs to.
-func Member(p Pattern) ent.Mixin { return memberMixin{Schema: mixin.Schema{}, p: p} }
+// Member is a schema that belongs to patterns. ent only reads a schema's fields, edges, hooks and policy from
+// Mixin, so polygen loads a member through Mixins, and its generated runtime reads it the same way.
+type Member interface {
+	Patterns() []Pattern
+}
+
+// Mixins is the schema's own mixins followed by one for each pattern it lists in Patterns.
+func Mixins(s interface{ Mixin() []ent.Mixin }) []ent.Mixin {
+	out := s.Mixin()
+	m, ok := s.(Member)
+	if !ok {
+		return out
+	}
+	out = append([]ent.Mixin{}, out...)
+	for _, p := range m.Patterns() {
+		if p.polyStorage() != StorageTPC {
+			panic(fmt.Sprintf("poly: %s is a %s pattern; only a TPC pattern takes members", Name(p), p.polyStorage()))
+		}
+		out = append(out, memberMixin{Schema: mixin.Schema{}, p: p})
+	}
+	return out
+}
+
+type withPatterns struct{ ent.Interface }
+
+func (w withPatterns) Mixin() []ent.Mixin { return Mixins(w.Interface) }
+
+// WithPatterns is the schema as polygen's loader marshals it, with its patterns as mixins.
+func WithPatterns(s ent.Interface) ent.Interface {
+	if _, ok := s.(Member); !ok {
+		return s
+	}
+	return withPatterns{s}
+}
 
 func (m memberMixin) Fields() []ent.Field {
 	var fields []ent.Field
@@ -110,6 +147,11 @@ type RefAnnotation struct {
 	Ref        string
 	Implements []string
 	Comment    string
+	// Only edges into a TPH pattern: From is the inverse of an edge the pattern declares, Many a list, and Field
+	// the foreign key column the edge is bound to.
+	Inverse bool
+	Many    bool
+	Field   string
 	// Annotations for every member edge, and for one member's edge, keyed by annotation name.
 	All     map[string]json.RawMessage
 	Members map[string]map[string]json.RawMessage
@@ -125,6 +167,9 @@ type EdgeBuilder struct {
 	ref        string
 	implements []string
 	comment    string
+	inverse    bool
+	many       bool
+	field      string
 	all        []schema.Annotation
 	members    map[string][]schema.Annotation
 	hooks      []ent.Hook
@@ -140,12 +185,28 @@ func To(name string, p Pattern) *EdgeBuilder {
 		ref:        "",
 		implements: nil,
 		comment:    "",
+		inverse:    false,
+		many:       false,
+		field:      "",
 		all:        nil,
 		members:    map[string][]schema.Annotation{},
 		hooks:      nil,
 		policy:     nil,
 	}
 }
+
+// From is the inverse of an edge a TPH pattern declares, such as a connection's events seen from an event.
+func From(name string, p Pattern) *EdgeBuilder {
+	b := To(name, p)
+	b.inverse = true
+	return b
+}
+
+// Many makes an edge into a TPH pattern a list.
+func (b *EdgeBuilder) Many() *EdgeBuilder { b.many = true; return b }
+
+// Field binds an edge into a TPH pattern to a foreign key field the schema declares.
+func (b *EdgeBuilder) Field(name string) *EdgeBuilder { b.field = name; return b }
 
 func (b *EdgeBuilder) Optional() *EdgeBuilder  { b.optional = true; return b }
 func (b *EdgeBuilder) Immutable() *EdgeBuilder { b.immutable = true; return b }
@@ -194,6 +255,9 @@ func (b *EdgeBuilder) Descriptor() *edge.Descriptor {
 		Ref:        b.ref,
 		Implements: b.implements,
 		Comment:    b.comment,
+		Inverse:    b.inverse,
+		Many:       b.many,
+		Field:      b.field,
 		All:        encode(b.all),
 		Members:    map[string]map[string]json.RawMessage{},
 	}

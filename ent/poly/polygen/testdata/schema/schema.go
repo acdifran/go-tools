@@ -10,13 +10,13 @@ import (
 
 type User struct{ ent.Schema }
 
-func (User) Mixin() []ent.Mixin { return []ent.Mixin{poly.Member(patterns.Actor{})} }
+func (User) Patterns() []poly.Pattern { return []poly.Pattern{patterns.Actor{}} }
 
 func (User) Edges() []ent.Edge { return []ent.Edge{edge.To("notes", Note.Type)} }
 
 type Agent struct{ ent.Schema }
 
-func (Agent) Mixin() []ent.Mixin { return []ent.Mixin{poly.Member(patterns.Actor{})} }
+func (Agent) Patterns() []poly.Pattern { return []poly.Pattern{patterns.Actor{}} }
 
 func (Agent) Edges() []ent.Edge { return []ent.Edge{edge.To("notes", Note.Type)} }
 

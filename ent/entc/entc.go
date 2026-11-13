@@ -13,6 +13,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/entc/gen"
+	"github.com/acdifran/go-tools/ent/poly"
 	"github.com/acdifran/go-tools/ent/schema"
 )
 
@@ -29,7 +30,7 @@ func getActions(node *gen.Type, registry map[string]ent.Interface) ([]*schema.Ac
 	}
 
 	actions := []*schema.ActionDef{}
-	mixins := entNode.Mixin()
+	mixins := poly.Mixins(entNode)
 
 	for _, mixin := range mixins {
 		mixinWithActions, ok := mixin.(schema.EntWithActions)

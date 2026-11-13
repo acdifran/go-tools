@@ -42,6 +42,9 @@ func decode[T any](v any) (T, bool) {
 }
 
 func expand(spec *load.SchemaSpec) error {
+	if err := expandTPH(spec); err != nil {
+		return err
+	}
 	members := map[string][]*load.Schema{}
 	for _, s := range spec.Schemas {
 		if m, ok := decode[poly.MemberAnnotation](s.Annotations[poly.MemberAnnotationName]); ok {
@@ -68,7 +71,7 @@ func expand(spec *load.SchemaSpec) error {
 			}
 			if len(members[ref.Pattern]) == 0 {
 				return fmt.Errorf(
-					"%s.%s: pattern %s has no members; add poly.Member(%s{}) to a schema's Mixin",
+					"%s.%s: pattern %s has no members; list %s{} in a schema's Patterns",
 					s.Name,
 					e.Name,
 					ref.Pattern,
