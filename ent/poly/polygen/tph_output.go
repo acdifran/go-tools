@@ -123,7 +123,8 @@ func tphPatterns(g *gen.Graph) ([]*tphPattern, error) {
 				f.Annotations[poly.VariantFieldAnnotationName],
 			); ok {
 				v := byVariant[vf.Variant]
-				own := gen.Funcs["pascal"].(func(string) string)(vf.Field)
+				// ent's own struct name for the column, minus the prefix, so acronyms (IDs, URL) read the same.
+				own := strings.TrimPrefix(f.StructField(), gen.Funcs["pascal"].(func(string) string)(v.Prefix))
 				v.Fields = append(
 					v.Fields,
 					tphField{Snake: vf.Field, Base: f, Name: own, Required: vf.Required},

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"entgo.io/contrib/entgql"
 	"entgo.io/ent/entc/gen"
 	"entgo.io/ent/schema/field"
 	"github.com/acdifran/go-tools/ent/poly"
@@ -88,7 +89,8 @@ func tphSchemaHook(g *gen.Graph, s *ast.Schema, sources []string) error {
 				Fields:     append(append(ast.FieldList{}, def.Fields...), ext...),
 			}
 			for _, f := range v.Fields {
-				if f.Base.Sensitive() {
+				gql, _ := decode[entgql.Annotation](f.Base.Annotations[entgql.Annotation{}.Name()])
+				if f.Base.Sensitive() || gql.Skip.Is(entgql.SkipType) {
 					continue
 				}
 				t := scalarOf(f.Base)
