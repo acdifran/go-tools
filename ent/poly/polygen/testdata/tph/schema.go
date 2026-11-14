@@ -13,12 +13,12 @@ import (
 type Org struct{ ent.Schema }
 
 func (Org) Edges() []ent.Edge {
-	return []ent.Edge{poly.To("connections", Connection{}).Many().Optional()}
+	return []ent.Edge{poly.To("connections", ConnectionPattern{}).Many().Optional()}
 }
 
-type Connection struct{ poly.TPH }
+type ConnectionPattern struct{ poly.TPH }
 
-func (Connection) Fields() []ent.Field {
+func (ConnectionPattern) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("name"),
 		field.Enum("provider").Values("zendesk", "hubspot"),
@@ -26,7 +26,7 @@ func (Connection) Fields() []ent.Field {
 	}
 }
 
-func (Connection) Edges() []ent.Edge {
+func (ConnectionPattern) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("org", Org.Type).Ref("connections").Field("org_id").Unique().Required(),
 		edge.To("events", Event.Type),
@@ -34,16 +34,18 @@ func (Connection) Edges() []ent.Edge {
 	}
 }
 
-func (Connection) Indexes() []ent.Index { return []ent.Index{index.Fields("org_id", "provider")} }
+func (ConnectionPattern) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("org_id", "provider")}
+}
 
-func (Connection) Variants() []poly.Variant {
+func (ConnectionPattern) Variants() []poly.Variant {
 	return []poly.Variant{
 		poly.Of("Zendesk", "zendesk").Fields(field.String("subdomain"), field.String("trigger_id").Optional()),
 		poly.Of("HubSpot", "hubspot").ColumnPrefix("hs").Fields(field.String("portal")),
 	}
 }
 
-func (Connection) Annotations() []schema.Annotation {
+func (ConnectionPattern) Annotations() []schema.Annotation {
 	return []schema.Annotation{poly.Discriminator("provider")}
 }
 
@@ -52,15 +54,15 @@ type Event struct{ ent.Schema }
 func (Event) Fields() []ent.Field { return []ent.Field{field.Int("connection_id")} }
 
 func (Event) Edges() []ent.Edge {
-	return []ent.Edge{poly.From("connection", Connection{}).Ref("events").Field("connection_id")}
+	return []ent.Edge{poly.From("connection", ConnectionPattern{}).Ref("events").Field("connection_id")}
 }
 
 type Flow struct{ ent.Schema }
 
 func (Flow) Edges() []ent.Edge {
-	return []ent.Edge{poly.To("sources", Connection{}).Many().Optional()}
+	return []ent.Edge{poly.To("sources", ConnectionPattern{}).Many().Optional()}
 }
 
 type Note struct{ ent.Schema }
 
-func (Note) Edges() []ent.Edge { return []ent.Edge{poly.To("conn", Connection{}).Optional()} }
+func (Note) Edges() []ent.Edge { return []ent.Edge{poly.To("conn", ConnectionPattern{}).Optional()} }

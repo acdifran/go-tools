@@ -76,7 +76,7 @@ func Generate(schemaPath string, cfg *gen.Config, options ...entc.Option) (err e
 	if err := graph.Gen(); err != nil {
 		return err
 	}
-	if err := runtimeMixins(cfg.Target); err != nil {
+	if err := rewriteRuntime(cfg.Target, tphTables(graph)); err != nil {
 		return err
 	}
 	return writeOutput(graph)
@@ -90,12 +90,22 @@ const initTmpl = `{{ define "config/init/fields/poly" }}
 // LoadGraph is entc.LoadGraph with the poly step, for anything else that reads the graph: template builders and
 // migration diffs.
 func LoadGraph(schemaPath string, cfg *gen.Config) (*gen.Graph, error) {
-	if err := writeStubs(schemaPath); err != nil {
-		return nil, fmt.Errorf("polygen: writing TPH tables: %w", err)
-	}
-	spec, err := loadSpec(schemaPath, cfg.BuildFlags)
+	privacy, err := scanPrivacy(schemaPath)
 	if err != nil {
+		return nil, fmt.Errorf("polygen: scanning privacy: %w", err)
+	}
+	restore, err := writePrivacyFiles(schemaPath, privacy, nil)
+	if err != nil {
+		return nil, fmt.Errorf("polygen: writing privacy: %w", err)
+	}
+	spec, rendered, err := loadSpec(schemaPath, cfg.BuildFlags, privacy)
+	if err != nil {
+		restore()
 		return nil, err
+	}
+	if _, err := writePrivacyFiles(schemaPath, privacy, rendered); err != nil {
+		restore()
+		return nil, fmt.Errorf("polygen: writing privacy: %w", err)
 	}
 	if err := expand(spec); err != nil {
 		return nil, err
@@ -169,6 +179,16 @@ type {{ $c.Name }}Client struct{ b *{{ $c.Base }}Client }
 {{ end }}`
 
 type tphClient struct{ Name, Base string }
+
+func tphTables(g *gen.Graph) []string {
+	var out []string
+	for _, n := range g.Nodes {
+		if a, ok := decode[poly.BaseAnnotation](n.Annotations[poly.BaseAnnotationName]); ok && a.Storage == poly.StorageTPH {
+			out = append(out, n.Name)
+		}
+	}
+	return out
+}
 
 func tphClients(g *gen.Graph) []tphClient {
 	var out []tphClient

@@ -2,6 +2,7 @@ package polygen
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -19,54 +20,77 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/entc/load"
+	"github.com/acdifran/go-tools/ent/privacystage"
 	"golang.org/x/tools/go/packages"
 )
 
 // loadSpec is ent's load.Config.Load, except that each schema is marshaled through poly.WithPatterns: ent reads a
 // schema's fields, edges, hooks and policy only from Mixin, and a schema lists its patterns in Patterns.
-func loadSpec(path string, buildFlags []string) (*load.SchemaSpec, error) {
+// It also returns each policy file's contributed rules, from privacystage.Render, since only running the schema package can
+// see the rules its mixins, patterns and edges contribute.
+func loadSpec(
+	path string,
+	buildFlags []string,
+	privacy []*privacyStub,
+) (*load.SchemaSpec, map[string]privacystage.Rendered, error) {
 	spec, names, err := schemaNames(path, buildFlags)
 	if err != nil {
-		return nil, fmt.Errorf("polygen: parse schema dir: %w", err)
+		return nil, nil, fmt.Errorf("polygen: parse schema dir: %w", err)
 	}
 	if len(names) == 0 {
-		return nil, fmt.Errorf("polygen: no schema found in: %s", path)
+		return nil, nil, fmt.Errorf("polygen: no schema found in: %s", path)
+	}
+	privacyNames := make([]string, len(privacy))
+	for i, p := range privacy {
+		privacyNames[i] = p.Name
 	}
 	var b bytes.Buffer
 	if err := loaderTmpl.Execute(
 		&b,
-		map[string]any{"Package": spec.PkgPath, "Names": names},
+		map[string]any{"Package": spec.PkgPath, "Names": names, "Privacy": privacyNames},
 	); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	src, err := format.Source(b.Bytes())
 	if err != nil {
-		return nil, fmt.Errorf("polygen: format loader: %w", err)
+		return nil, nil, fmt.Errorf("polygen: format loader: %w", err)
 	}
 	dir, err := os.MkdirTemp(".", ".polygen_load")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer os.RemoveAll(dir)
 	target := filepath.Join(dir, fmt.Sprintf("load_%d.go", time.Now().UnixNano()))
 	if err := os.WriteFile(target, src, 0o644); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	args := append(append([]string{"run"}, buildFlags...), target)
+	renderedPath, err := filepath.Abs(filepath.Join(dir, "privacy.json"))
+	if err != nil {
+		return nil, nil, err
+	}
+	args := append(append(append([]string{"run"}, buildFlags...), target), renderedPath)
 	cmd := exec.Command("go", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, errors.New("polygen: load schema: " + strings.TrimSpace(stderr.String()))
+		return nil, nil, errors.New("polygen: load schema: " + strings.TrimSpace(stderr.String()))
 	}
 	for _, line := range strings.Split(stdout.String(), "\n") {
 		s, err := load.UnmarshalSchema([]byte(line))
 		if err != nil {
-			return nil, fmt.Errorf("polygen: unmarshal schema %s: %w", line, err)
+			return nil, nil, fmt.Errorf("polygen: unmarshal schema %s: %w", line, err)
 		}
 		spec.Schemas = append(spec.Schemas, s)
 	}
-	return spec, nil
+	rendered := map[string]privacystage.Rendered{}
+	raw, err := os.ReadFile(renderedPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := json.Unmarshal(raw, &rendered); err != nil {
+		return nil, nil, fmt.Errorf("polygen: privacy rules: %w", err)
+	}
+	return spec, rendered, nil
 }
 
 var entInterface = reflect.TypeOf(struct{ ent.Interface }{}).Field(0).Type
@@ -113,11 +137,17 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	{{- if .Privacy }}
+	"errors"
+	{{- end }}
 	"os"
 
 	"entgo.io/ent"
 	"entgo.io/ent/entc/load"
 	"github.com/acdifran/go-tools/ent/poly"
+	{{- if .Privacy }}
+	"github.com/acdifran/go-tools/ent/privacystage"
+	{{- end }}
 
 	entschema {{ printf "%q" .Package }}
 )
@@ -149,6 +179,21 @@ func main() {
 		}
 		lines = append(lines, b)
 	}
+	rendered := map[string]privacystage.Rendered{}
+	{{- range .Privacy }}
+	if r, err := privacystage.Render({{ printf "%q" $.Package }}, poly.Privacy(entschema.{{ . }}{})...); err != nil {
+		fail(errors.New({{ printf "%q" . }} + ": " + err.Error()))
+	} else {
+		rendered[{{ printf "%q" . }}] = r
+	}
+	{{- end }}
+	b, err := json.Marshal(rendered)
+	if err != nil {
+		fail(err)
+	}
+	if err := os.WriteFile(os.Args[1], b, 0o644); err != nil {
+		fail(err)
+	}
 	os.Stdout.Write(bytes.Join(lines, []byte("\n")))
 }
 
@@ -161,9 +206,17 @@ func fail(err error) {
 
 var runtimeMixinRe = regexp.MustCompile(`(\w+)Mixin := (\w+)\.(\w+)\{\}\.Mixin\(\)`)
 
-// ent's generated runtime reads defaults, hooks and policies by mixin position, so it has to see the same mixins
-// the loader did.
-func runtimeMixins(target string) error {
+// ent's generated runtime reads defaults, hooks and policies by mixin and field position, so it has to see the same
+// mixins and fields the loader did: a member's patterns as mixins, and a TPH pattern as its TPHTable.
+func rewriteRuntime(target string, tphTables []string) error {
+	var tables *regexp.Regexp
+	if len(tphTables) > 0 {
+		quoted := make([]string, len(tphTables))
+		for i, t := range tphTables {
+			quoted[i] = regexp.QuoteMeta(t)
+		}
+		tables = regexp.MustCompile(`\b(\w+)\.(` + strings.Join(quoted, "|") + `)\{\}`)
+	}
 	for _, path := range []string{filepath.Join(target, "runtime", "runtime.go"), filepath.Join(target, "runtime.go")} {
 		b, err := os.ReadFile(path)
 		if os.IsNotExist(err) {
@@ -173,6 +226,9 @@ func runtimeMixins(target string) error {
 			return err
 		}
 		out := runtimeMixinRe.ReplaceAll(b, []byte("${1}Mixin := poly.Mixins(${2}.${3}{})"))
+		if tables != nil {
+			out = tables.ReplaceAll(out, []byte("poly.TPHTable(${1}.${2}{})"))
+		}
 		if bytes.Equal(out, b) {
 			continue
 		}

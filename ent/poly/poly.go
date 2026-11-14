@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"entgo.io/ent"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/mixin"
+	"github.com/acdifran/go-tools/ent/privacystage"
 )
 
 type Storage string
@@ -21,16 +23,16 @@ const (
 	StorageTPH Storage = "TPH"
 )
 
-// Pattern is an abstract type. Its methods are read like a schema's: Fields, Edges, Indexes, Hooks, Policy, Mixin
-// and Annotations are given to every member.
+// Pattern is an abstract type. Its methods are read like a schema's: Fields, Edges, Indexes, Hooks, Mixin and
+// Annotations are given to every member, and so are its privacy rules if it is a privacystage.Contributor.
 type Pattern interface {
 	ent.Mixin
 	Mixin() []ent.Mixin
 	polyStorage() Storage
 }
 
-// patternBase has no Type method, so a pattern is never an ent.Interface and ent's loader never takes it for a
-// table, whichever package it lives in.
+// patternBase has no Type method, so a TPC pattern is never an ent.Interface and ent's loader never takes it for a
+// table.
 type patternBase struct{ mixin.Schema }
 
 func (patternBase) Mixin() []ent.Mixin { return nil }
@@ -42,7 +44,9 @@ type TPC struct{ patternBase }
 
 func (TPC) polyStorage() Storage { return StorageTPC }
 
-func Name(p Pattern) string { return reflect.TypeOf(p).Name() }
+// Name is the pattern's name, which its generated interface and members take: its type's name without a
+// Pattern suffix, so a TPH pattern's type can be its table's schema without taking the interface's name.
+func Name(p Pattern) string { return strings.TrimSuffix(reflect.TypeOf(p).Name(), "Pattern") }
 
 const (
 	MemberAnnotationName = "PolyMember"
@@ -91,8 +95,12 @@ type withPatterns struct{ ent.Interface }
 
 func (w withPatterns) Mixin() []ent.Mixin { return Mixins(w.Interface) }
 
-// WithPatterns is the schema as polygen's loader marshals it, with its patterns as mixins.
+// WithPatterns is the schema as polygen's loader marshals it, with its patterns as mixins, and a TPH pattern as
+// its TPHTable.
 func WithPatterns(s ent.Interface) ent.Interface {
+	if p, ok := s.(Pattern); ok && p.polyStorage() == StorageTPH {
+		s = TPHTable(p)
+	}
 	if _, ok := s.(Member); !ok {
 		return s
 	}
@@ -124,8 +132,6 @@ func (m memberMixin) Hooks() []ent.Hook {
 	}
 	return append(hooks, m.p.Hooks()...)
 }
-
-func (m memberMixin) Policy() ent.Policy { return m.p.Policy() }
 
 func (m memberMixin) Annotations() []schema.Annotation {
 	var names []string
@@ -173,7 +179,7 @@ type EdgeBuilder struct {
 	all        []schema.Annotation
 	members    map[string][]schema.Annotation
 	hooks      []ent.Hook
-	policy     ent.Policy
+	privacy    *privacystage.Policy
 }
 
 func To(name string, p Pattern) *EdgeBuilder {
@@ -191,7 +197,7 @@ func To(name string, p Pattern) *EdgeBuilder {
 		all:        nil,
 		members:    map[string][]schema.Annotation{},
 		hooks:      nil,
-		policy:     nil,
+		privacy:    nil,
 	}
 }
 
@@ -239,10 +245,8 @@ func (b *EdgeBuilder) Hooks(hooks ...ent.Hook) *EdgeBuilder {
 	return b
 }
 
-// Policy runs after the schema's mixin policies and before its own Policy, where a mixin carrying these rules
-// would sit.
-func (b *EdgeBuilder) Policy(p ent.Policy) *EdgeBuilder {
-	b.policy = p
+func (b *EdgeBuilder) Privacy(p privacystage.Policy) *EdgeBuilder {
+	b.privacy = &p
 	return b
 }
 
@@ -311,29 +315,4 @@ func EdgeHooks(edges []ent.Edge) []ent.Hook {
 		}
 	}
 	return hooks
-}
-
-type policyHolder struct{ p ent.Policy }
-
-func (h policyHolder) Policy() ent.Policy { return h.p }
-
-// EdgePolicies are what the generated code inserts between a schema's mixin policies and its own.
-func EdgePolicies(edges []ent.Edge) []interface{ Policy() ent.Policy } {
-	var out []interface{ Policy() ent.Policy }
-	for _, e := range edges {
-		if b, ok := e.(*EdgeBuilder); ok && b.policy != nil {
-			out = append(out, policyHolder{b.policy})
-		}
-	}
-	return out
-}
-
-func MixinPolicies(mixins []ent.Mixin) []interface{ Policy() ent.Policy } {
-	var out []interface{ Policy() ent.Policy }
-	for _, m := range mixins {
-		if m.Policy() != nil {
-			out = append(out, m)
-		}
-	}
-	return out
 }

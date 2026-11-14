@@ -59,9 +59,8 @@ type pointerMember struct {
 }
 
 type pointer struct {
-	T      *gen.Type
-	Edges  []*pointerEdge
-	Policy bool
+	T     *gen.Type
+	Edges []*pointerEdge
 }
 
 type edgeInterface struct {
@@ -147,7 +146,7 @@ func buildModel(g *gen.Graph) (*model, error) {
 		if !ok {
 			continue
 		}
-		ptr := &pointer{T: n, Edges: nil, Policy: n.NumPolicy() > 0}
+		ptr := &pointer{T: n, Edges: nil}
 		for _, pe := range pes {
 			e := &pointerEdge{PolyEdge: pe, P: byName[pe.Pattern], Members: nil, GraphQL: false}
 			e.GraphQL = m.GraphQL && gqlType(n) && e.P.GraphQL
@@ -423,7 +422,6 @@ func Or(ps ...Predicate) Predicate { return Predicate(sql.OrPredicates(ps...)) }
 func Not(p Predicate) Predicate { return Predicate(sql.NotPredicates(p)) }
 `
 
-// Sorts after ent's runtime.go, so its init runs after ent's has built each schema's policy.
 const runtimeFile = "runtime_poly.go"
 
 var patternsTmpl = header + `package {{ base .Package }}
@@ -655,24 +653,14 @@ var {{ $E }}Fields = []string{ {{- range $i, $m := $e.Members }}{{ if $i }}, {{ 
 var runtimeTmpl = header + `package runtime
 
 import (
-	"entgo.io/ent/privacy"
 	"github.com/acdifran/go-tools/ent/poly"
 	"{{ .Package }}"
 	"{{ .Schema }}"
-	{{- range .Pointers }}
-	"{{ $.Package }}/{{ .T.PackageDir }}"
-	{{- end }}
 )
 
 func init() {
 	{{- range .Pointers }}{{ $n := .T.Name }}
 	{{ base $.Package }}.PolyRegisterHooks("{{ $n }}", poly.EdgeHooks(schema.{{ $n }}{}.Edges()))
-	{{- if .Policy }}
-	{{ .T.Package }}.Policy = privacy.NewPolicies(append(append(
-		poly.MixinPolicies(poly.Mixins(schema.{{ $n }}{})),
-		poly.EdgePolicies(schema.{{ $n }}{}.Edges())...),
-		schema.{{ $n }}{})...)
-	{{- end }}
 	{{- end }}
 }
 `

@@ -3,6 +3,7 @@ package poly
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"unicode"
@@ -15,11 +16,54 @@ import (
 )
 
 // TPH stores every member in one table: a discriminator column says which member a row is, and each member's own
-// fields are nullable columns prefixed with its name. The pattern is written like a schema; polygen generates the
-// ent schema for its table, named <Pattern>Pattern.
-type TPH struct{ patternBase }
+// fields are nullable columns prefixed with its name. The pattern is its table's ent schema, so its type is named
+// <Name>Pattern and lives in the schema package; TPHTable adds its variants to it.
+type TPH struct{ ent.Schema }
 
 func (TPH) polyStorage() Storage { return StorageTPH }
+
+func (TPH) Patterns() []Pattern { return nil }
+
+// TPHTable is the full ent schema of a TPH pattern's table: the pattern as written plus its variants' columns, hooks
+// and checks. An embedded TPH can't see the pattern it's in, so polygen loads this in the pattern's place and points
+// ent's generated runtime at it.
+func TPHTable(p Pattern) ent.Interface {
+	if p.polyStorage() != StorageTPH {
+		panic(fmt.Sprintf("poly: %s is a %s pattern, not TPH", Name(p), p.polyStorage()))
+	}
+	if t := reflect.TypeOf(p).Name(); t == Name(p) {
+		panic(fmt.Sprintf("poly: TPH pattern %s must be named %sPattern, or its table takes the interface's name", t, t))
+	}
+	return tphTable{Schema: ent.Schema{}, p: p}
+}
+
+type tphTable struct {
+	ent.Schema
+	p Pattern
+}
+
+func (t tphTable) Mixin() []ent.Mixin { return t.p.Mixin() }
+
+func (t tphTable) Fields() []ent.Field { return TPHFields(t.p) }
+
+func (t tphTable) Edges() []ent.Edge { return t.p.Edges() }
+
+func (t tphTable) Indexes() []ent.Index { return t.p.Indexes() }
+
+func (t tphTable) Hooks() []ent.Hook { return TPHHooks(t.p) }
+
+func (t tphTable) Interceptors() []ent.Interceptor { return t.p.Interceptors() }
+
+func (t tphTable) Policy() ent.Policy { return t.p.Policy() }
+
+func (t tphTable) Annotations() []schema.Annotation { return TPHAnnotations(t.p) }
+
+func (t tphTable) Patterns() []Pattern {
+	if m, ok := t.p.(Member); ok {
+		return m.Patterns()
+	}
+	return nil
+}
 
 // Variant is one kind of row in a TPH pattern's table, declared in the pattern's Variants.
 type Variant struct {
