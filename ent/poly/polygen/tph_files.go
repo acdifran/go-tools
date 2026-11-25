@@ -239,31 +239,34 @@ func renderEdge(b *strings.Builder, e *tphEdge) {
 	of := lowerFirst(P) + "Of"
 	fmt.Fprintf(
 		b,
-		"func (n *%s) Query%s() *%sQuery { return &%sQuery{b: n.Query%s()} }\n\n",
+		"func (n *%s) Query%s() *%sQuery { return &%sQuery{b: n.Query%s(), conv: %s} }\n\n",
 		T,
 		N,
 		P,
 		P,
 		E,
+		of,
 	)
 	fmt.Fprintf(
 		b,
-		"func (q *%sQuery) Query%s() *%sQuery { return &%sQuery{b: q.Query%s()} }\n\n",
+		"func (q *%sQuery) Query%s() *%sQuery { return &%sQuery{b: q.Query%s(), conv: %s} }\n\n",
 		T,
 		N,
 		P,
 		P,
 		E,
+		of,
 	)
 	fmt.Fprintf(
 		b,
-		"func (c *%sClient) Query%s(n *%s) *%sQuery { return &%sQuery{b: c.Query%s(n)} }\n\n",
+		"func (c *%sClient) Query%s(n *%s) *%sQuery { return &%sQuery{b: c.Query%s(n), conv: %s} }\n\n",
 		T,
 		N,
 		T,
 		P,
 		P,
 		E,
+		of,
 	)
 	fmt.Fprintf(b, `func (q *%[1]sQuery) With%[2]s(opts ...func(*%[3]sQuery)) *%[1]sQuery {
 	return q.With%[4]s(func(bq *%[5]sQuery) {
